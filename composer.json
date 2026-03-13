@@ -4,6 +4,7 @@
     "type": "project",
     "require": {
         "pocketmine/pocketmine-mp": "^5.0.0",
+        "bstats/pocketmine-mp": "^1.0.0",
         "paroxity/commando": "dev-master",
         "nikic/php-parser": "^5.7"
     },
