@@ -6,7 +6,7 @@
 
 A PocketMine-MP plugin that provides a **packet translation layer** allowing players using **older Minecraft Bedrock client versions** to connect to servers running newer protocol versions — without forcing anyone to update.
 
-[![State](https://img.shields.io/badge/state-early--development-orange)](https://github.com/nicholass003/LittleBrother) [![PocketMine](https://img.shields.io/badge/PocketMine-MP-blue)](https://github.com/pmmp/PocketMine-MP) [![Minecraft](https://img.shields.io/badge/Minecraft-Bedrock-green)](https://minecraft.net) [![License](https://img.shields.io/github/license/nicholass003/LittleBrother)](LICENSE)
+[![State](https://img.shields.io/badge/state-early--development-orange)](https://github.com/nicholass003/LittleBrother) [![PocketMine](https://img.shields.io/badge/PocketMine-MP-blue)](https://github.com/pmmp/PocketMine-MP) [![Minecraft](https://img.shields.io/badge/Minecraft-Bedrock-green)](https://minecraft.net) [![License](https://img.shields.io/github/license/nicholass003/LittleBrother)](LICENSE) [![State](https://poggit.pmmp.io/shield.state/LittleBrother)](https://poggit.pmmp.io/p/LittleBrother) [![API](https://poggit.pmmp.io/shield.api/LittleBrother)](https://poggit.pmmp.io/p/LittleBrother) [![Total Downloads](https://poggit.pmmp.io/shield.dl.total/LittleBrother)](https://poggit.pmmp.io/p/LittleBrother) [![Discord](https://img.shields.io/discord/1230982180742631457?logo=discord&logoColor=white&color=5865F2)](https://discord.gg/EEJK2vxtCp) 
 
 </div>
 
