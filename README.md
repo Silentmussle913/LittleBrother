@@ -195,13 +195,7 @@ A heartfelt thank you to everyone who has supported this project — through cod
 
 ## 👤 Author
 
-**Vega Nicholas Saputra**
-
-PocketMine-MP developer passionate about:
-- 🔬 Minecraft Bedrock protocol research
-- 🏗️ PocketMine server architecture
-- 📡 Packet translation systems
-- ⚡ High-performance server software
+- [@nicholass003](https://github.com/nicholass003/)
 
 ---
 
