@@ -30,7 +30,6 @@ use pmmp\encoding\ByteBufferReader;
 use pmmp\encoding\ByteBufferWriter;
 use pmmp\encoding\LE;
 use pmmp\encoding\VarInt;
-use pocketmine\color\Color;
 use pocketmine\network\mcpe\protocol\serializer\CommonTypes;
 use pocketmine\network\mcpe\protocol\types\AbilitiesData;
 use pocketmine\network\mcpe\protocol\types\CacheableNbt;
@@ -38,9 +37,7 @@ use pocketmine\utils\Binary;
 use function array_merge;
 use function count;
 use function ord;
-use function pack;
 use function str_split;
-use function unpack;
 
 final class ManualTypeRegistry{
 
@@ -59,9 +56,7 @@ final class ManualTypeRegistry{
 		self::registerCommandSoftEnumValue($registry);
 		self::registerOptionalBiomeDefinitionTags($registry);
 		self::registerOptionalBiomeDefinitionChunkGenData($registry);
-		self::registerOptionalLEUnsignedInt($registry);
 
-		self::registerBeU32($registry);
 		self::registerRotationByte($registry);
 		self::registerEntityLink($registry);
 		self::registerAttribute($registry);
@@ -99,20 +94,6 @@ final class ManualTypeRegistry{
 			},
 			writer: static function(ByteBufferWriter $out, string $bytes, int $protocol) : void{
 				$out->writeByteArray($bytes);
-			}
-		);
-	}
-
-	private static function registerBeU32(TypeRegistry $registry) : void{
-		$registry->register(
-			'be:u32',
-			reader: static function(ByteBufferReader $in, int $protocol) : int{
-				$bytes = $in->readByteArray(4);
-				[, $val] = unpack('N', $bytes);
-				return $val;
-			},
-			writer: static function(ByteBufferWriter $out, int $v, int $protocol) : void{
-				$out->writeByteArray(pack('N', $v));
 			}
 		);
 	}
@@ -1213,18 +1194,6 @@ final class ManualTypeRegistry{
 			},
 			writer: static function(ByteBufferWriter $out, ?array $value, int $protocol) : void{
 				BiomeChunkGenParser::write($out, $value, $protocol);
-			}
-		);
-	}
-
-	private static function registerOptionalLEUnsignedInt(TypeRegistry $registry) : void{
-		$registry->register(
-			'l_e',
-			reader: static function(ByteBufferReader $in, int $protocol) : ?int{
-				return CommonTypes::readOptional($in, LE::readUnsignedInt(...));
-			},
-			writer: static function(ByteBufferWriter $out, ?int $v, int $protocol) : void{
-				CommonTypes::writeOptional($out, $v, LE::writeUnsignedInt(...));
 			}
 		);
 	}
