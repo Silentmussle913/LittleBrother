@@ -6,9 +6,17 @@
 
 A PocketMine-MP plugin that provides a **packet translation layer** allowing players using **older Minecraft Bedrock client versions** to connect to servers running newer protocol versions — without forcing anyone to update.
 
-[![State](https://img.shields.io/badge/state-early--development-orange)](https://github.com/nicholass003/LittleBrother) [![PocketMine](https://img.shields.io/badge/PocketMine-MP-blue)](https://github.com/pmmp/PocketMine-MP) [![Minecraft](https://img.shields.io/badge/Minecraft-Bedrock-green)](https://minecraft.net) [![License](https://img.shields.io/github/license/nicholass003/LittleBrother)](LICENSE)
+[![License](https://img.shields.io/github/license/nicholass003/LittleBrother)](LICENSE)
+[![PocketMine API](https://img.shields.io/badge/PocketMine--MP%20API-5.41.0-blue)](https://github.com/pmmp/PocketMine-MP)
+[![GitHub Release](https://img.shields.io/github/v/release/nicholass003/LittleBrother)](https://github.com/nicholass003/LittleBrother/releases)
+[![GitHub Downloads](https://img.shields.io/github/downloads/nicholass003/LittleBrother/total)](https://github.com/nicholass003/LittleBrother/releases)
 
-[![State](https://poggit.pmmp.io/shield.state/LittleBrother)](https://poggit.pmmp.io/p/LittleBrother) [![API](https://poggit.pmmp.io/shield.api/LittleBrother)](https://poggit.pmmp.io/p/LittleBrother) [![Total Downloads](https://poggit.pmmp.io/shield.dl.total/LittleBrother)](https://poggit.pmmp.io/p/LittleBrother) [![Discord](https://img.shields.io/discord/1230982180742631457?logo=discord&logoColor=white&color=5865F2)](https://discord.gg/EEJK2vxtCp) 
+[![Poggit](https://poggit.pmmp.io/shield.state/LittleBrother)](https://poggit.pmmp.io/p/LittleBrother)
+[![Poggit API](https://poggit.pmmp.io/shield.api/LittleBrother)](https://poggit.pmmp.io/p/LittleBrother)
+[![Poggit Downloads](https://poggit.pmmp.io/shield.dl.total/LittleBrother)](https://poggit.pmmp.io/p/LittleBrother)
+
+[![Discord](https://img.shields.io/discord/1230982180742631457?logo=discord&logoColor=white&color=5865F2)](https://discord.gg/EEJK2vxtCp)
+[![GitHub Stars](https://img.shields.io/github/stars/nicholass003/LittleBrother)](https://github.com/nicholass003/LittleBrother/stargazers)
 
 </div>
 
