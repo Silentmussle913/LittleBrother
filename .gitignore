@@ -22,4 +22,5 @@ extract.php
 /build/.trash
 /tools/.data-cache
 /tools/.schema-cache
+/.trash/
 *.zip
