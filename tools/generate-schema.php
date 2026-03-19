@@ -53,9 +53,17 @@ const MANUAL_PACKETS = [
 	'PlayerAuthInputPacket' => true,
 	'MovePlayerPacket' => true,
 	'ItemStackResponsePacket' => true,
+	'SubChunkPacket' => true,
+	'LevelChunkPacket' => true,
+	'UpdateBlockPacket' => true,
+	'UpdateSubChunkBlocksPacket' => true,
+	'UpdateBlockSyncedPacket' => true,
+	'InteractPacket' => true,
+	'AnimatePacket' => true,
+	'LoginPacket' => true,
 ];
 
-const FIELD_OVERRIDES = [
+const PACKETS_OVERRIDES = [
 	'ItemStackRequestPacket' => [
 		[
 			'name' => 'requests',
@@ -70,6 +78,552 @@ const FIELD_OVERRIDES = [
 		],
 	],
 ];
+
+const FIELD_OVERRIDES = [
+	'AvailableCommandsPacket' => [
+		'enumValues' => [
+			[
+				'type' => 'array',
+				'countType' => 'uvarint',
+				'entry' => [
+					[
+						'name' => 'value',
+						'type' => 'string',
+					],
+				],
+				'storeCountAs' => 'enumValuesCount',
+			],
+		],
+		'enums.valueIndexes' => [
+			[
+				'type' => 'enums_value_indexes'
+			]
+		],
+		'commandData.permission' => [
+			[
+				'until' => 860,
+				'type' => 'u8',
+			],
+			[
+				'since' => 898,
+				'type' => 'string',
+			],
+		],
+		'commandData.chainedSubCommandDataIndexes' => [
+			[
+				'type' => 'array',
+				'countType' => 'uvarint',
+				'entry' => [
+					[
+						'name' => 'value',
+						'type' => 'le:u16',
+						'until' => 860,
+					],
+					[
+						'name' => 'value',
+						'type' => 'le:u32',
+						'since' => 898,
+					],
+				],
+			],
+		],
+	],
+	'ResourcePackStackPacket' => [
+		'behaviorPackStack' => [
+			[
+				'type' => 'array',
+				'until' => 860,
+				'countType' => 'uvarint',
+				'entry' => [
+					[
+						'name' => 'packId',
+						'type' => 'string',
+					],
+					[
+						'name' => 'version',
+						'type' => 'string',
+					],
+					[
+						'name' => 'subPackName',
+						'type' => 'string',
+					],
+				]
+			]
+		]
+	]
+];
+
+// Used for protocols not yet available in pmmp/BedrockProtocol.
+// Fetches packet structure from Mojang bedrock-protocol-docs.
+//
+// Packet matching Mojang <-> pmmp:
+//   1. Via $metaProperties["[cereal:packet]"] == packetId in ProtocolInfo
+//   2. Fallback: name similarity (case-insensitive, strip "Packet" suffix)
+// Map x-underlying-type (Mojang) → pmmp schema type string (without Compression)
+const MOJANG_UNDERLYING_TYPE_MAP = [
+	'uint8' => 'u8',
+	'int8' => 'i8',
+	'uint16' => 'le:u16',
+	'int16' => 'le:i16',
+	'uint32' => 'le:u32',
+	'int32' => 'le:i32',
+	'uint64' => 'le:u64',
+	'int64' => 'le:i64',
+	'float' => 'le:f32',
+	'double' => 'le:f64',
+	'bool' => 'bool',
+	'boolean' => 'bool',
+	'string' => 'string',
+];
+
+function mojangGet(string $path, ?string $token) : ?string{
+	$url = "https://api.github.com/repos/Mojang/bedrock-protocol-docs/contents/$path";
+	debugLog("MOJANG_FETCH", "GET $path");
+	try{
+		$data = githubGet($url, $token);
+		if(!isset($data['content'])){
+			debugLog("MOJANG_FETCH", "no content field | $path");
+			return null;
+		}
+		$decoded = base64_decode(str_replace("\n", '', $data['content']), true);
+		debugLog("MOJANG_FETCH", "ok | $path | " . strlen($decoded) . " bytes");
+		return $decoded;
+	}catch(Throwable $e){
+		debugLog("MOJANG_FETCH", "exception | $path | " . $e->getMessage());
+		return null;
+	}
+}
+
+function mojangCachedGet(string $path, ?string $token) : ?string{
+	$cacheKey = "mojang:$path";
+	$cached = diskCacheGet($cacheKey);
+	if($cached !== null){
+		debugLog("MOJANG_CACHE", "hit | $path");
+		return $cached;
+	}
+	$content = mojangGet($path, $token);
+	if($content !== null){
+		diskCacheSet($cacheKey, $content);
+	}
+	return $content;
+}
+
+function parseMojangNewPacketIds(string $markdown) : array{
+	$packets = [];
+	$inSection = false;
+
+	foreach(explode("\n", $markdown) as $line){
+		$trimmed = trim($line);
+
+		if($trimmed === 'MinecraftPacketIds:'){
+			$inSection = true;
+			debugLog("MOJANG_PARSE", "enter section MinecraftPacketIds");
+			continue;
+		}
+
+		if($inSection
+			&& $trimmed !== ''
+			&& str_ends_with($trimmed, ':')
+			&& !preg_match('/^\s*(Added|Removed|Changed|Displaced)\s/', $trimmed)
+		){
+			debugLog("MOJANG_PARSE", "exit MinecraftPacketIds | next=$trimmed");
+			$inSection = false;
+			continue;
+		}
+
+		if(!$inSection) continue;
+
+		if(preg_match('/^\s*Added\s+(\w+)\s+\((\d+)\)\s*\[/', $trimmed, $m)){
+			if(in_array($m[1], ['EndId', 'EndID', 'Count', 'NumPackets'], true)) continue;
+			$packets[$m[1]] = (int) $m[2];
+			debugLog("MOJANG_PARSE", "new packet | {$m[1]} = {$m[2]}");
+		}
+	}
+
+	return $packets;
+}
+
+function parseMojangRawChangelog(string $markdown) : array{
+	$entries = [];
+	$inSection = false;
+
+	foreach(explode("\n", $markdown) as $line){
+		$trimmed = trim($line);
+
+		if(str_contains($trimmed, 'Raw Protocol Version Changelog')){
+			$inSection = true;
+			debugLog("MOJANG_PARSE", "enter section Raw Protocol Version Changelog");
+			continue;
+		}
+
+		if(!$inSection) continue;
+		if($trimmed === '' || str_starts_with($trimmed, '#')) continue;
+
+		if(preg_match('/^(\d{3,4}):\s+(.+)$/', $trimmed, $m)){
+			$entries[] = ['subversion' => (int) $m[1], 'description' => trim($m[2])];
+			debugLog("MOJANG_PARSE", "subversion {$m[1]} | {$m[2]}");
+		}
+	}
+
+	debugLog("MOJANG_PARSE", "total raw entries | " . count($entries));
+	return $entries;
+}
+
+function mojangResolveType(string $underlyingType, array $serOpts) : string{
+	$compressed = in_array('Compression', $serOpts, true);
+
+	if($compressed){
+		return match($underlyingType){
+			'uint8', 'uint16', 'uint32' => 'uvarint',
+			'int8', 'int16', 'int32' => 'varint',
+			'uint64' => 'uvarlong',
+			'int64' => 'varlong',
+			default => MOJANG_UNDERLYING_TYPE_MAP[$underlyingType] ?? $underlyingType,
+		};
+	}
+
+	return MOJANG_UNDERLYING_TYPE_MAP[$underlyingType] ?? $underlyingType;
+}
+
+function mojangStripQualifier(string $title) : string{
+	$title = preg_replace('/^(struct|class|enum)\s+/i', '', $title);
+	// Take only the part after "::" if present
+	if(str_contains($title, '::')){
+		$title = substr($title, strrpos($title, '::') + 2);
+	}
+	return $title;
+}
+
+function mojangRefToTypeString(string $refId, array $definitions) : string{
+	$def = $definitions[$refId] ?? null;
+	if($def === null){
+		debugLog("MOJANG_REF", "ref not found in definitions | $refId");
+		return 'unknown';
+	}
+	$title = mojangStripQualifier($def['title'] ?? $refId);
+	return camelToSnake($title);
+}
+
+function mojangExpandDefinition(string $refId, array $definitions, string $fieldName, int $depth = 0) : array{
+	if($depth > 3) return [['name' => $fieldName, 'type' => 'unknown']];
+
+	$def = $definitions[$refId] ?? null;
+	if($def === null) return [['name' => $fieldName, 'type' => 'unknown']];
+
+	$title = mojangStripQualifier($def['title'] ?? $refId);
+	$props = $def['properties'] ?? [];
+
+	if(count($props) === 1){
+		$innerDef = reset($props);
+		$underlyingType = $innerDef['x-underlying-type'] ?? null;
+		$serOpts = $innerDef['x-serialization-options'] ?? [];
+		if($underlyingType !== null){
+			$type = mojangResolveType($underlyingType, $serOpts);
+			debugLog("MOJANG_EXPAND", "single-wrapper | $title → $fieldName:$type");
+			return [['name' => $fieldName, 'type' => $type]];
+		}
+	}
+
+	$typeStr = camelToSnake($title);
+	debugLog("MOJANG_EXPAND", "multi-field | $title → $fieldName:$typeStr");
+	return [['name' => $fieldName, 'type' => $typeStr]];
+}
+
+function parseMojangPacketJson(array $json, string $packetName) : array{
+	$properties = $json['properties'] ?? [];
+	$definitions = $json['definitions'] ?? [];
+
+	if(empty($properties)){
+		debugLog("MOJANG_JSON", "no properties | $packetName");
+		return [];
+	}
+
+	$ordered = [];
+	foreach($properties as $fieldName => $fieldDef){
+		$ordinal = $fieldDef['x-ordinal-index'] ?? 9999;
+		$ordered[] = ['fieldName' => $fieldName, 'def' => $fieldDef, 'ordinal' => $ordinal];
+	}
+	usort($ordered, fn($a, $b) => $a['ordinal'] <=> $b['ordinal']);
+
+	$fields = [];
+
+	foreach($ordered as $item){
+		$rawName = $item['fieldName'];
+		$def = $item['def'];
+		$ordinal = $item['ordinal'];
+
+		$snakeName = strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $rawName));
+		$snakeName = trim($snakeName, '_');
+
+		debugLog("MOJANG_JSON", "$packetName.$snakeName | ordinal=$ordinal | raw='$rawName'");
+
+		if(isset($def['oneOf'])){
+			debugLog("MOJANG_JSON", "$packetName.$snakeName | oneOf union → manual_union");
+			$fields[] = ['name' => $snakeName, 'type' => 'manual_union'];
+			continue;
+		}
+
+		if(($def['type'] ?? '') === 'array'){
+			$items = $def['items'] ?? [];
+			$countUnderlyingType = $def['x-count-underlying-type'] ?? 'uint32';
+			$countSerOpts = $def['x-count-serialization-options'] ?? ['Compression'];
+			$countType = mojangResolveType($countUnderlyingType, $countSerOpts);
+
+			if(isset($items['$ref'])){
+				$refId = str_replace('#/definitions/', '', $items['$ref']);
+				$entryTypeStr = mojangRefToTypeString($refId, $definitions);
+				debugLog("MOJANG_JSON", "$packetName.$snakeName | array | count=$countType | entry ref=$entryTypeStr");
+				$fields[] = [
+					'name' => $snakeName,
+					'type' => 'array',
+					'countType' => $countType,
+					'entry' => [['name' => 'value', 'type' => $entryTypeStr]],
+				];
+			}elseif(isset($items['x-underlying-type'])){
+				$itemSerOpts = $items['x-serialization-options'] ?? [];
+				$itemType = mojangResolveType($items['x-underlying-type'], $itemSerOpts);
+				debugLog("MOJANG_JSON", "$packetName.$snakeName | array | count=$countType | entry scalar=$itemType");
+				$fields[] = [
+					'name' => $snakeName,
+					'type' => 'array',
+					'countType' => $countType,
+					'entry' => [['name' => 'value', 'type' => $itemType]],
+				];
+			}elseif(($items['type'] ?? '') === 'string'){
+				debugLog("MOJANG_JSON", "$packetName.$snakeName | array of string");
+				$fields[] = [
+					'name' => $snakeName,
+					'type' => 'array',
+					'countType' => $countType,
+					'entry' => [['name' => 'value', 'type' => 'string']],
+				];
+			}else{
+				debugLog("MOJANG_JSON", "$packetName.$snakeName | array | items unknown");
+				$fields[] = [
+					'name' => $snakeName,
+					'type' => 'array',
+					'countType' => $countType,
+					'entry' => [],
+				];
+			}
+			continue;
+		}
+
+		if(isset($def['$ref'])){
+			$refId = str_replace('#/definitions/', '', $def['$ref']);
+			$expanded = mojangExpandDefinition($refId, $definitions, $snakeName);
+			foreach($expanded as $f){
+				debugLog("MOJANG_JSON", "$packetName.$snakeName | ref expanded | {$f['name']}:{$f['type']}");
+				$fields[] = $f;
+			}
+			continue;
+		}
+
+		if(isset($def['enum']) && ($def['type'] ?? '') === 'string'){
+			$underlyingType = $def['x-underlying-type'] ?? 'uint8';
+			$serOpts = $def['x-serialization-options'] ?? [];
+			$mappedType = mojangResolveType($underlyingType, $serOpts);
+			debugLog("MOJANG_JSON", "$packetName.$snakeName | enum | $underlyingType → $mappedType");
+			$fields[] = ['name' => $snakeName, 'type' => $mappedType];
+			continue;
+		}
+
+		if(($def['type'] ?? '') === 'boolean'
+			|| ($def['x-underlying-type'] ?? '') === 'bool'
+			|| ($def['x-underlying-type'] ?? '') === 'boolean'
+		){
+			debugLog("MOJANG_JSON", "$packetName.$snakeName | bool");
+			$fields[] = ['name' => $snakeName, 'type' => 'bool'];
+			continue;
+		}
+
+		if(isset($def['x-underlying-type'])){
+			$serOpts = $def['x-serialization-options'] ?? [];
+			$mappedType = mojangResolveType($def['x-underlying-type'], $serOpts);
+			debugLog("MOJANG_JSON", "$packetName.$snakeName | scalar | {$def['x-underlying-type']} → $mappedType");
+			$fields[] = ['name' => $snakeName, 'type' => $mappedType];
+			continue;
+		}
+
+		if(($def['type'] ?? '') === 'string'){
+			debugLog("MOJANG_JSON", "$packetName.$snakeName | plain string");
+			$fields[] = ['name' => $snakeName, 'type' => 'string'];
+			continue;
+		}
+
+		debugLog("MOJANG_JSON", "$packetName.$snakeName | unresolved | def=" . json_encode($def));
+		$fields[] = ['name' => $snakeName, 'type' => 'unknown'];
+	}
+
+	debugLog("MOJANG_JSON", "$packetName | extracted " . count($fields) . " fields");
+	return $fields;
+}
+
+function fetchMojangPacketData(string $packetName, ?string $token) : ?array{
+	$path = "json/{$packetName}.json";
+	debugLog("MOJANG_JSON_FETCH", "fetching | $path");
+
+	$content = mojangCachedGet($path, $token);
+	if($content === null){
+		debugLog("MOJANG_JSON_FETCH", "not found | $packetName");
+		return null;
+	}
+
+	$json = json_decode($content, true);
+	if($json === null){
+		debugLog("MOJANG_JSON_FETCH", "json decode failed | $packetName");
+		return null;
+	}
+
+	$cerealId = $json['$metaProperties']['[cereal:packet]'] ?? null;
+	if($cerealId !== null){
+		debugLog("MOJANG_JSON_FETCH", "$packetName | cereal_id=$cerealId");
+	}
+
+	$fields = parseMojangPacketJson($json, $packetName);
+	return ['fields' => $fields, 'cereal_id' => $cerealId];
+}
+
+function enumNameToPacketCandidates(string $enumName) : array{
+	if(str_ends_with($enumName, 'Packet')){
+		return [$enumName];
+	}
+	return [$enumName . 'Packet'];
+}
+
+function buildMojangPatchSnapshot(int $protocol, string $changelogFile, array $parsedByProtocol, array $protocols, ?string $token) : array{
+	echo "  [mojang-patch] protocol $protocol ← $changelogFile\n";
+	debugLog("MOJANG_PATCH", "=== build snapshot | protocol=$protocol | $changelogFile ===");
+
+	$changelogContent = mojangCachedGet($changelogFile, $token);
+	if($changelogContent === null){
+		echo "  [mojang-patch] ERROR: failed to fetch $changelogFile\n";
+		debugLog("MOJANG_PATCH", "failed to fetch changelog | $changelogFile");
+		return [];
+	}
+
+	$newPacketIds = parseMojangNewPacketIds($changelogContent);
+	$rawEntries = parseMojangRawChangelog($changelogContent);
+
+	echo "  [mojang-patch] " . count($newPacketIds) . " new packets, " . count($rawEntries) . " subversion entries\n";
+
+	$changedPackets = [];
+	foreach($rawEntries as $entry){
+		if(preg_match_all('/\b([A-Z][a-zA-Z]+Packet)\b/', $entry['description'], $m)){
+			foreach($m[1] as $pName){
+				$changedPackets[$pName][] = $entry['description'];
+			}
+		}
+	}
+	debugLog("MOJANG_PATCH", "changed packets from raw changelog | " . implode(', ', array_keys($changedPackets)));
+
+	$prevProtocol = null;
+	foreach(array_reverse($protocols) as $p){
+		if($p < $protocol && isset($parsedByProtocol[$p])){
+			$prevProtocol = $p;
+			break;
+		}
+	}
+
+	$snapshot = [];
+	if($prevProtocol !== null){
+		$snapshot = $parsedByProtocol[$prevProtocol];
+		echo "  [mojang-patch] baseline from protocol $prevProtocol (" . count($snapshot) . " packets)\n";
+		debugLog("MOJANG_PATCH", "baseline | protocol=$prevProtocol | " . count($snapshot) . " packets");
+	}else{
+		echo "  [mojang-patch] WARNING: no previous protocol found for baseline\n";
+		debugLog("MOJANG_PATCH", "no previous protocol for baseline");
+	}
+
+	$idToPath = [];
+
+	$patchedCount = 0;
+	foreach($newPacketIds as $enumName => $enumValue){
+		$candidates = enumNameToPacketCandidates($enumName);
+
+		$found = false;
+		foreach($candidates as $packetName){
+			$data = fetchMojangPacketData($packetName, $token);
+			if($data === null) continue;
+
+			$syntheticPath = "src/{$packetName}.php";
+			$constName = classNameToProtocolInfoConst($packetName);
+
+			echo "  [mojang-patch] + new: $packetName"
+				. ($data['cereal_id'] !== null ? " (cereal_id={$data['cereal_id']})" : "")
+				. " → " . count($data['fields']) . " fields\n";
+			debugLog("MOJANG_PATCH_NEW", "$packetName | enum=$enumName | enumVal=$enumValue | cereal_id=" . ($data['cereal_id'] ?? 'null') . " | fields=" . count($data['fields']));
+
+			$snapshot[$syntheticPath] = [
+				'className' => $packetName,
+				'packetConst' => $constName,
+				'fields' => $data['fields'],
+				'_mojang_patch' => true,
+				'_cereal_id' => $data['cereal_id'],
+				'_needs_review' => empty($data['fields']),
+			];
+
+			if($data['cereal_id'] !== null){
+				$idToPath[$data['cereal_id']] = $syntheticPath;
+			}
+
+			$patchedCount++;
+			$found = true;
+			break;
+		}
+
+		if(!$found){
+			$packetName = $candidates[0];
+			$syntheticPath = "src/{$packetName}.php";
+			$constName = classNameToProtocolInfoConst($packetName);
+
+			echo "  [mojang-patch] + new (no JSON): $packetName → marked manual\n";
+			debugLog("MOJANG_PATCH_NEW", "$packetName | enum=$enumName | no JSON found");
+
+			$snapshot[$syntheticPath] = [
+				'className' => $packetName,
+				'packetConst' => $constName,
+				'fields' => [],
+				'_mojang_patch' => true,
+				'_cereal_id' => null,
+				'_needs_review' => true,
+			];
+			$patchedCount++;
+		}
+	}
+
+	foreach($changedPackets as $packetName => $descriptions){
+		$enumWithoutPacket = preg_replace('/Packet$/', '', $packetName);
+		if(isset($newPacketIds[$enumWithoutPacket]) || isset($newPacketIds[$packetName])){
+			debugLog("MOJANG_PATCH_CHANGED", "$packetName | already processed as new, skip");
+			continue;
+		}
+
+		$syntheticPath = "src/{$packetName}.php";
+		if(!isset($snapshot[$syntheticPath])){
+			debugLog("MOJANG_PATCH_CHANGED", "$packetName | not in baseline, skip");
+			continue;
+		}
+
+		$data = fetchMojangPacketData($packetName, $token);
+		if($data !== null){
+			echo "  [mojang-patch] ~ changed: $packetName → " . count($data['fields']) . " fields (updated)\n";
+			debugLog("MOJANG_PATCH_CHANGED", "$packetName | fields=" . count($data['fields']) . " | cereal_id=" . ($data['cereal_id'] ?? 'null'));
+			$snapshot[$syntheticPath]['fields'] = $data['fields'];
+			$snapshot[$syntheticPath]['_mojang_patch'] = true;
+			$snapshot[$syntheticPath]['_cereal_id'] = $data['cereal_id'];
+			$patchedCount++;
+		}else{
+			echo "  [mojang-patch] ~ changed: $packetName → no JSON, inherited from baseline\n";
+			debugLog("MOJANG_PATCH_CHANGED", "$packetName | no JSON, inherited from baseline");
+		}
+	}
+
+	debugLog("MOJANG_PATCH", "=== snapshot done | total=" . count($snapshot) . " | patched=$patchedCount ===");
+	echo "  [mojang-patch] done: " . count($snapshot) . " total packets, $patchedCount new/updated\n";
+
+	return $snapshot;
+}
 
 $opts = getopt('', ['config:', 'versions:', 'out:', 'token:', 'debug:']);
 
@@ -86,6 +640,7 @@ if(isset($opts['config'])){
 $versionMap = $config['versions'] ?? [];
 $outFile = __DIR__ . '/../build/schemas.php';
 $githubToken = $config['token'] ?? null;
+$mojangPatches = $config['mojang_patches'] ?? [];
 
 // --debug=ResourcePackStackPacket,AvailableCommandsPacket
 $debugPackets = isset($opts['debug']) ? array_flip(explode(',', $opts['debug'])) : [];
@@ -1580,11 +2135,16 @@ function defaultForType(string $type) : mixed{
 	};
 }
 
-function mergeFieldsAcrossVersions(array $snapshotsByProtocol) : array{
+function mergeFieldsAcrossVersions(array $snapshotsByProtocol, string $packetName = '', array $customRules = [], string $parentPath = '') : array{
 	$protocols = array_keys($snapshotsByProtocol);
 	sort($protocols);
+	if(empty($protocols)){
+		return [];
+	}
+
 	$minProtocol = $protocols[0];
 	$maxProtocol = end($protocols);
+
 	$allFields = [];
 	$entrySnapshots = [];
 
@@ -1600,6 +2160,12 @@ function mergeFieldsAcrossVersions(array $snapshotsByProtocol) : array{
 				if(isset($f['optionalFlag'])){
 					$allFields[$key]['optionalFlag'] = $f['optionalFlag'];
 				}
+				if(isset($f['storeCountAs'])){
+					$allFields[$key]['storeCountAs'] = $f['storeCountAs'];
+				}
+				if(isset($f['storeAs'])){
+					$allFields[$key]['storeAs'] = $f['storeAs'];
+				}
 			}
 			if(($f['type'] ?? null) === 'array' && isset($f['entry'])){
 				$entrySnapshots[$key][$protocol] = $f['entry'];
@@ -1610,24 +2176,109 @@ function mergeFieldsAcrossVersions(array $snapshotsByProtocol) : array{
 	foreach($allFields as $key => &$fieldDef){
 		if(($fieldDef['type'] ?? null) !== 'array') continue;
 		if(!isset($entrySnapshots[$key])) continue;
+
 		$snapshots = $entrySnapshots[$key];
 		foreach($protocols as $proto){
 			if(!isset($snapshots[$proto])) $snapshots[$proto] = [];
 		}
-		$fieldDef['entry'] = mergeFieldsAcrossVersions($snapshots);
+
+		$newPath = $parentPath === '' ? $fieldDef['name'] : $parentPath . '.' . $fieldDef['name'];
+		$fieldDef['entry'] = mergeFieldsAcrossVersions($snapshots, $packetName, $customRules, $newPath);
 	}
 	unset($fieldDef);
 
 	$result = [];
 
 	foreach($allFields as $fieldDef){
-		if(($fieldDef['type'] ?? null) === 'array'){
-			$result[] = $fieldDef;
+		$name = $fieldDef['name'];
+		$type = $fieldDef['type'];
+		$fullPath = $parentPath === '' ? $name : $parentPath . '.' . $name;
+
+		$customRule = $customRules[$packetName][$fullPath] ?? $customRules[$packetName][$name] ?? null;
+
+		if($customRule !== null && is_array($customRule)){
+			foreach($customRule as $rule){
+				$entry = array_merge($fieldDef, $rule);
+				$entry['name'] = $fieldDef['name'];
+
+				if(isset($rule['type']) && $rule['type'] !== 'array'){
+					unset($entry['countType']);
+					unset($entry['entry']);
+				}
+
+				if(isset($rule['storeCountAs'])){
+					$entry['storeCountAs'] = $rule['storeCountAs'];
+				}
+				if(isset($rule['storeAs'])){
+					$entry['storeAs'] = $rule['storeAs'];
+				}
+
+				if(isset($rule['since'])){
+					$entry['since'] = $rule['since'];
+					$entry['default'] ??= defaultForType($entry['type']);
+				}
+				if(isset($rule['until'])){
+					$entry['until'] = $rule['until'];
+					$entry['default'] ??= defaultForType($entry['type']);
+				}
+				if(isset($fieldDef['optionalFlag'])){
+					$entry['flag'] = $fieldDef['optionalFlag'];
+				}
+				$result[] = $entry;
+			}
 			continue;
 		}
 
-		$name = $fieldDef['name'];
-		$type = $fieldDef['type'];
+		if(($fieldDef['type'] ?? null) === 'array'){
+			$ranges = [];
+			$rangeStart = null;
+			$prevProto = null;
+
+			foreach($protocols as $proto){
+				$activeHere = false;
+				foreach($snapshotsByProtocol[$proto] as $f){
+					if($f['name'] === $name && $f['type'] === $type){
+						$activeHere = true;
+						break;
+					}
+				}
+				if($activeHere && $rangeStart === null){
+					$rangeStart = $proto;
+				}elseif(!$activeHere && $rangeStart !== null){
+					$ranges[] = [$rangeStart, $prevProto];
+					$rangeStart = null;
+				}
+				$prevProto = $proto;
+			}
+
+			if($rangeStart !== null) $ranges[] = [$rangeStart, $prevProto];
+
+			foreach($ranges as [$since, $until]){
+				$entry = $fieldDef;
+				if($since > $minProtocol){
+					$entry['since'] = $since;
+					$entry['default'] = defaultForType($type);
+				}
+				if($until < $maxProtocol){
+					$entry['until'] = $until;
+					$entry['default'] ??= defaultForType($type);
+				}
+				if(isset($fieldDef['optionalFlag'])){
+					$entry['flag'] = $fieldDef['optionalFlag'];
+				}
+
+				if(isset($fieldDef['storeCountAs'])){
+					$entry['storeCountAs'] = $fieldDef['storeCountAs'];
+				}
+				if(isset($fieldDef['storeAs'])){
+					$entry['storeAs'] = $fieldDef['storeAs'];
+				}
+				$result[] = $entry;
+			}
+			continue;
+		}
+
+		// non-array
 		$ranges = [];
 		$rangeStart = null;
 		$prevProto = null;
@@ -1718,6 +2369,12 @@ function renderField(array $f, int $indent) : array{
 		case 'array':
 			if(isset($f['countType'])){
 				$lines[] = "{$pad}'countType' => '{$f['countType']}',";
+			}
+			if(isset($f['storeCountAs'])){
+				$lines[] = "{$pad}'storeCountAs' => '{$f['storeCountAs']}',";
+			}
+			if(isset($f['storeAs'])){
+				$lines[] = "{$pad}'storeAs' => '{$f['storeAs']}',";
 			}
 			$lines[] = "{$pad}'entry' => " . exportArray($f['entry'] ?? [], $indent) . ",";
 			break;
@@ -1827,12 +2484,19 @@ $compositeTypeCache = [];
 $fileSourceCache = [];
 $compositeSourceCache = [];
 
-$totalSteps = count($protocols) + 3;
+$totalSteps = count($protocols) + 3 + (!empty($mojangPatches) ? 1 : 0);
 $step = 1;
 
 echo "[{$step}/{$totalSteps}] Fetching file trees from GitHub...\n";
 $treesByProtocol = [];
 foreach($protocols as $i => $protocol){
+	// Skip fetch for protocols sourced from Mojang patch (tree would duplicate the previous tag)
+	if(isset($mojangPatches[(string) $protocol])){
+		echo "  [protocol $protocol] skipped (Mojang patch)\n";
+		debugLog("TREE_FETCH", "skip | protocol=$protocol | Mojang patch");
+		$treesByProtocol[$protocol] = [];
+		continue;
+	}
 	$tag = $tags[$i];
 	echo "  [$tag] ";
 	try{
@@ -1850,6 +2514,10 @@ $step++;
 echo "\n[{$step}/{$totalSteps}] Parsing ProtocolInfo.php for packet ID mapping...\n";
 $packetIdMap = [];
 foreach($protocols as $i => $protocol){
+	if(isset($mojangPatches[(string) $protocol])){
+		debugLog("PROTOCOL_INFO", "skip | protocol=$protocol | Mojang patch");
+		continue;
+	}
 	$tag = $tags[$i];
 	$tree = $treesByProtocol[$protocol];
 	$protocolInfoPath = null;
@@ -1874,6 +2542,12 @@ $step++;
 echo "\n[{$step}/{$totalSteps}] Parsing packet files...\n";
 $parsedByProtocol = [];
 foreach($protocols as $i => $protocol){
+	if(isset($mojangPatches[(string) $protocol])){
+		$parsedByProtocol[$protocol] = [];
+		echo "  Protocol $protocol: skipped (Mojang patch)\n";
+		debugLog("PARSE_PACKETS", "skip | protocol=$protocol | Mojang patch");
+		continue;
+	}
 	$tag = $tags[$i];
 	$tree = $treesByProtocol[$protocol];
 	$count = 0;
@@ -1910,6 +2584,36 @@ foreach($protocols as $i => $protocol){
 }
 $step++;
 
+if(!empty($mojangPatches)){
+	echo "\n[{$step}/{$totalSteps}] Applying Mojang protocol patches...\n";
+	debugLog("MOJANG_PATCH", "applying " . count($mojangPatches) . " patches");
+	foreach($mojangPatches as $protoStr => $changelogFile){
+		$patchProtocol = (int) $protoStr;
+
+		if(!in_array($patchProtocol, $protocols, true)){
+			echo "  WARNING: protocol $patchProtocol in mojang_patches but not in versions config, skip\n";
+			debugLog("MOJANG_PATCH", "skip | protocol=$patchProtocol | not in versions config");
+			continue;
+		}
+
+		$alreadyParsed = isset($parsedByProtocol[$patchProtocol]) && !empty($parsedByProtocol[$patchProtocol]);
+		if($alreadyParsed){
+			echo "  Protocol $patchProtocol already available from pmmp/BedrockProtocol, skip Mojang patch\n";
+			debugLog("MOJANG_PATCH", "skip | protocol=$patchProtocol | already parsed from pmmp");
+			continue;
+		}
+
+		$parsedByProtocol[$patchProtocol] = buildMojangPatchSnapshot(
+			$patchProtocol,
+			$changelogFile,
+			$parsedByProtocol,
+			$protocols,
+			$githubToken
+		);
+	}
+	$step++;
+}
+
 echo "\n[{$step}/{$totalSteps}] Resolving packet IDs and merging fields...\n";
 $allPaths = [];
 foreach($parsedByProtocol as $parsed){
@@ -1923,22 +2627,43 @@ foreach(array_keys($allPaths) as $path){
 	$packetName = basename($path, '.php');
 	$className = null;
 	$constName = null;
+	$cerealId = null;
+	$isMojangPatch = false;
 
 	foreach($protocols as $protocol){
 		if(!isset($parsedByProtocol[$protocol][$path])) continue;
-		$className = $parsedByProtocol[$protocol][$path]['className'] ?? null;
-		$constName = $parsedByProtocol[$protocol][$path]['packetConst'] ?? null;
+		$entry = $parsedByProtocol[$protocol][$path];
+		$className = $entry['className'] ?? null;
+		$constName = $entry['packetConst'] ?? null;
+		if(isset($entry['_cereal_id'])){
+			$cerealId = $entry['_cereal_id'];
+			$isMojangPatch = true;
+		}
 		if($constName !== null) break;
 	}
 
+	// Resolve packet ID:
+	// 1. Via packetIdMap from pmmp ProtocolInfo (normal path)
+	// 2. Fallback: cereal_id from Mojang JSON $metaProperties (patch path)
 	$packetId = $packetIdMap[$constName] ?? null;
+
+	if($packetId === null && $cerealId !== null){
+		$packetId = $cerealId;
+		debugLog("RESOLVE_CEREAL", "$packetName | constName=$constName | cereal_id=$cerealId");
+	}
+
 	if($packetId === null){
-		debugLog("UNRESOLVED_PACKET_ID", "$packetName | const=$constName");
+		debugLog("UNRESOLVED_PACKET_ID", "$packetName | const=$constName | cereal_id=null");
 		$stats['unresolved']++;
-		$unresolvedReport[] = "$packetName → tried constant: $constName";
+		$unresolvedReport[] = "$packetName → tried constant: $constName, cereal_id: null";
 		continue;
 	}
+
 	$stats['resolved']++;
+	debugLog(
+		$isMojangPatch ? "RESOLVE_MOJANG" : "RESOLVE_PMMP",
+		"$packetName | packetId=$packetId" . ($isMojangPatch ? " | via cereal_id" : "")
+	);
 
 	// Find the first protocol where this packet appears
 	$packetSince = null;
@@ -1963,7 +2688,7 @@ foreach(array_keys($allPaths) as $path){
 	foreach($protocols as $protocol){
 		$snapshots[$protocol] = $parsedByProtocol[$protocol][$path]['fields'] ?? [];
 	}
-	$merged = mergeFieldsAcrossVersions($snapshots);
+	$merged = mergeFieldsAcrossVersions($snapshots, $packetName, FIELD_OVERRIDES);
 	$isVersioned = !empty(array_filter($merged, fn($f) => isset($f['since']) || isset($f['until'])));
 
 	if($packetSince !== null)     $stats['new_packet']++;
@@ -1971,8 +2696,8 @@ foreach(array_keys($allPaths) as $path){
 	elseif($isVersioned)          $stats['versioned']++;
 	else                          $stats['passthrough']++;
 
-	if(isset(FIELD_OVERRIDES[$className ?? $packetName])){
-		$merged = FIELD_OVERRIDES[$className ?? $packetName];
+	if(isset(PACKETS_OVERRIDES[$className ?? $packetName])){
+		$merged = PACKETS_OVERRIDES[$className ?? $packetName];
 	}
 
 	$schemaEntry = ['packet' => $packetName, 'fields' => $merged];
@@ -2019,5 +2744,5 @@ foreach($schemas as $id => $schema){
 		echo "    $marker {$f['name']} ({$f['type']}) [$range]\n";
 	}
 }
-var_dump($packets);
+//var_dump($packets);
 echo "\nDone! Total schemas: " . count($schemas) . "\n\n";
