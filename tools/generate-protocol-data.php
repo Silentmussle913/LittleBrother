@@ -23,89 +23,54 @@
 
 declare(strict_types=1);
 
+use pocketmine\data\bedrock\block\BlockStateData;
+use pocketmine\errorhandler\ErrorToExceptionHandler;
+use pocketmine\nbt\BigEndianNbtSerializer;
+use pocketmine\nbt\tag\CompoundTag;
+use pocketmine\nbt\TreeRoot;
+use pocketmine\network\mcpe\protocol\serializer\NetworkNbtSerializer;
+
 require __DIR__ . '/../vendor/autoload.php';
 
 $opts = getopt('', ['config:', 'token:']);
 
-$config = [];
-if(isset($opts['config'])){
-	$config = json_decode(file_get_contents($opts['config']), true);
+$configPath = $opts['config'] ?? 'config.json';
+
+if(!file_exists($configPath)){
+	echo "ERROR: config file not found\n";
+	exit(1);
 }
 
-$config['token'] ??= $opts['token'] ?? null;
+$config = json_decode(file_get_contents($configPath), true);
 
-$versionMap = $config['versions'] ?? [];
-$outDir = rtrim($config['out_dir'] ?? 'resources/data/bedrock', '/');
-$token = $config['token'] ?? null;
+if(!is_array($config)){
+	echo "ERROR: invalid config.json\n";
+	exit(1);
+}
 
-if(empty($versionMap)){
+$versions = $config['versions'] ?? [];
+$outDir = rtrim($config['out_dir'] ?? "resources/data/bedrock", "/");
+$token = $opts['token'] ?? $config['token'] ?? null;
+
+if(empty($versions)){
 	echo "ERROR: No versions configured\n";
 	exit(1);
 }
 
-ksort($versionMap);
-
-$currentProtocol = max(array_keys($versionMap));
-
-$cacheDir = __DIR__ . '/.data-cache';
-if(!is_dir($cacheDir)){
-	mkdir($cacheDir, 0755, true);
-}
-
-function githubRaw(string $branch, string $file, ?string $token) : string{
-
-	global $cacheDir;
-
-	$cacheKey = $cacheDir . '/' . md5("$branch:$file");
-
-	if(file_exists($cacheKey)){
-		return file_get_contents($cacheKey);
-	}
-
-	$url = "https://raw.githubusercontent.com/pmmp/BedrockData/$branch/$file";
-
-	$headers = ['User-Agent: LittleBrother-DataGen/2.0'];
-
-	if($token){
-		$headers[] = "Authorization: Bearer $token";
-	}
-
-	$ctx = stream_context_create([
-		'http' => [
-			'header' => implode("\r\n", $headers),
-			'timeout' => 30
-		]
-	]);
-
-	$body = @file_get_contents($url, false, $ctx);
-
-	if($body === false){
-		throw new RuntimeException("Failed to fetch $url");
-	}
-
-	file_put_contents($cacheKey, $body);
-
-	return $body;
-}
-
-function save(string $path, string $data) : void{
-
-	$dir = dirname($path);
-
-	if(!is_dir($dir)){
-		mkdir($dir, 0755, true);
-	}
-
-	file_put_contents($path, $data);
-}
-
 echo "\n=== LittleBrother Protocol Data Generator ===\n\n";
 
-foreach($versionMap as $protocol => $branch){
-
+foreach($versions as $protocol => $dataset){
 	$protocol = (int) $protocol;
 
-	echo "Protocol $protocol ($branch)\n";
+	if(is_array($dataset)){
+		$bedrockBranch = $dataset["bedrock_data"] ?? null;
+		$networkVersion = $dataset["network_data"] ?? null;
+	}else{
+		$bedrockBranch = $dataset;
+		$networkVersion = preg_replace('/^bedrock-/', '', $dataset);
+	}
+
+	echo "Protocol $protocol\n";
 
 	$dir = "$outDir/$protocol";
 
@@ -113,59 +78,185 @@ foreach($versionMap as $protocol => $branch){
 		mkdir($dir, 0755, true);
 	}
 
-	/*
-	 * CURRENT PROTOCOL
-	 * skip
-	 */
-
-	if($protocol === $currentProtocol){
-		continue;
-	}
+	$canonicalPath = "$dir/canonical_block_states.nbt";
+	$metaPath = "$dir/block_state_meta_map.json";
+	$requiredPath = "$dir/required_item_list.json";
 
 	/*
-	 * canonical_block_states
+	 * BEDROCK DATA (direct download)
 	 */
 
-	echo "  fetching canonical_block_states.nbt...\n";
+	if($bedrockBranch !== null){
+		if(!file_exists($canonicalPath)){
+			echo "  fetching canonical_block_states\n";
+			file_put_contents(
+				$canonicalPath,
+				githubFetch("https://raw.githubusercontent.com/pmmp/BedrockData/$bedrockBranch/canonical_block_states.nbt", $token)
+			);
+		}
 
-	if(file_exists("$dir/canonical_block_states.nbt")){
-		echo "  already exists, skipping...\n";
+		if(!file_exists($metaPath)){
+			echo "  fetching block_state_meta_map\n";
+			file_put_contents(
+				$metaPath,
+				githubFetch("https://raw.githubusercontent.com/pmmp/BedrockData/$bedrockBranch/block_state_meta_map.json", $token)
+			);
+		}
+
+		if(!file_exists($requiredPath)){
+			echo "  fetching required_item_list\n";
+			file_put_contents(
+				$requiredPath,
+				githubFetch("https://raw.githubusercontent.com/pmmp/BedrockData/$bedrockBranch/required_item_list.json", $token)
+			);
+		}
+
 	}else{
-		$data = githubRaw($branch, 'canonical_block_states.nbt', $token);
 
-		save("$dir/canonical_block_states.nbt", $data);
-	}
+		/*
+		 * NETWORK DATA fallback
+		 */
 
-	/*
-	 * block_state_meta_map
-	 */
+		if($networkVersion !== null){
+			if(!file_exists($canonicalPath)){
+				echo "  converting block_palette → canonical_block_states\n";
 
-	echo "  fetching block_state_meta_map.json...\n";
+				$paletteData = githubFetch(
+					"https://raw.githubusercontent.com/Kaooot/bedrock-network-data/master/release/$networkVersion/block_palette.nbt",
+					$token
+				);
 
-	if(file_exists("$dir/block_state_meta_map.json")){
-		echo "  already exists, skipping...\n";
-	}else{
-		$data = githubRaw($branch, 'block_state_meta_map.json', $token);
+				$canonicalData = convertPaletteToCanonical($paletteData);
 
-		save("$dir/block_state_meta_map.json", $data);
-	}
+				file_put_contents($canonicalPath, $canonicalData);
+			}
 
-	/*
-	 * required_item_list
-	 */
+			if(!file_exists($metaPath)){
+				echo "  generating block_state_meta_map\n";
+				file_put_contents(
+					$metaPath,
+					json_encode(generateMetaMap($canonicalPath), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+				);
+			}
 
-	echo "  fetching required_item_list.json...\n";
+			if(!file_exists($requiredPath)){
+				echo "  generating required_item_list\n";
 
-	if(file_exists("$dir/required_item_list.json")){
-		echo "  already exists, skipping...\n";
-	}else{
-		$data = githubRaw($branch, 'required_item_list.json', $token);
+				$itemPalette = githubFetch(
+					"https://raw.githubusercontent.com/Kaooot/bedrock-network-data/master/release/$networkVersion/item_palette.json",
+					$token
+				);
 
-		save("$dir/required_item_list.json", $data);
+				file_put_contents(
+					$requiredPath,
+					json_encode(generateRequiredItemListFromString($itemPalette), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+				);
+			}
+
+		}else{
+			echo "  no dataset available\n";
+		}
 	}
 
 	echo "  done\n\n";
 }
 
 echo "Finished\n";
-echo "Output: $outDir\n\n";
+echo "Output: $outDir\n";
+
+function githubFetch(string $url, ?string $token) : string{
+	$headers = ["User-Agent: LittleBrother-Generator"];
+
+	if($token){
+		$headers[] = "Authorization: Bearer $token";
+	}
+
+	$ctx = stream_context_create([
+		"http" => [
+			"header" => implode("\r\n", $headers),
+			"timeout" => 30
+		]
+	]);
+
+	$data = file_get_contents($url, false, $ctx);
+
+	if($data === false){
+		throw new RuntimeException("Failed to fetch $url");
+	}
+
+	return $data;
+}
+
+/**
+ * Ported from Azvyl's block_palette.nbt -> canonical_block_states.nbt converter
+ * @see https://gist.github.com/Azvyl/942e8cf8534d3e48ea990aa4503b59f1
+ */
+function convertPaletteToCanonical(string $paletteData) : string{
+	$decompressed = ErrorToExceptionHandler::trapAndRemoveFalse(fn() => zlib_decode($paletteData));
+
+	$compoundTag = (new BigEndianNbtSerializer())->read($decompressed)->mustGetCompoundTag();
+
+	$block_states = [];
+
+	/** @var CompoundTag $block */
+	foreach($compoundTag->getListTag("blocks") as $block){
+		$block->removeTag("name_hash", "network_id", "block_id");
+
+		$block_states[] = new TreeRoot(
+			BlockStateData::fromNbt($block)->toVanillaNbt()
+		);
+	}
+
+	return (new NetworkNbtSerializer())->writeMultiple($block_states);
+}
+
+function generateMetaMap(string $nbtPath) : array {
+	$serializer = new NetworkNbtSerializer();
+	$trees = $serializer->readMultiple(file_get_contents($nbtPath));
+
+	$meta = [];
+	$lastBlockName = null;
+	$currentMeta = -1;
+
+	foreach($trees as $tree){
+		$tag = $tree->mustGetCompoundTag();
+		$blockName = $tag->getString("name");
+
+		if($blockName !== $lastBlockName){
+			$currentMeta = 0;
+			$lastBlockName = $blockName;
+		}else{
+			$currentMeta++;
+		}
+
+		$meta[] = $currentMeta;
+	}
+
+	return $meta;
+}
+
+function generateRequiredItemListFromString(string $json) : array{
+	$data = json_decode($json, true);
+
+	if(!isset($data["items"])){
+		return [];
+	}
+
+	$items = $data["items"];
+
+	usort($items, fn($a,$b) => strcmp($a["name"], $b["name"]));
+
+	$result = [];
+
+	foreach($items as $item){
+		$name = $item["name"];
+
+		$result[$name] = [
+			"runtime_id" => $item["id"] ?? 0,
+			"component_based" => false,
+			"version" => 2
+		];
+	}
+
+	return $result;
+}
