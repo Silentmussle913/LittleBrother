@@ -25,13 +25,44 @@ declare(strict_types=1);
 namespace Nicholass003\LittleBrother\Utils;
 
 use pocketmine\Server;
+use function date;
+use function file_exists;
+use function file_put_contents;
+use function unlink;
+use const FILE_APPEND;
+use const LOCK_EX;
+use const PHP_EOL;
 
 class Debugger{
 
+	private const LOG_FILE = "debug.log";
+
 	public static function debug(string $message, bool $ignore = false) : void{
+		if($ignore){
+			return;
+		}
 		$server = Server::getInstance();
-		if(!$ignore){
-			$server->getLogger()->debug($message);
+		$server->getLogger()->debug($message);
+	}
+
+	public static function log(string $message, bool $ignore = false) : void{
+		if($ignore){
+			return;
+		}
+		$time = date("Y-m-d H:i:s");
+		$line = "[" . $time . "] " . $message . PHP_EOL;
+
+		file_put_contents(
+			Server::getInstance()->getDataPath() . self::LOG_FILE,
+			$line,
+			FILE_APPEND | LOCK_EX
+		);
+	}
+
+	public static function clear() : void{
+		$file = Server::getInstance()->getDataPath() . self::LOG_FILE;
+		if(file_exists($file)){
+			unlink($file);
 		}
 	}
 }
