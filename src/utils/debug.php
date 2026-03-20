@@ -50,7 +50,7 @@ class Debugger{
 	}
 
 	public static function log(string $message, bool $ignore = false) : void{
-		if(true){
+		if($ignore){
 			return;
 		}
 		$plugin = LittleBrother::getInstance();
