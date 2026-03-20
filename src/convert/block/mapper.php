@@ -26,39 +26,160 @@ namespace Nicholass003\LittleBrother\Convert\Block;
 
 use Nicholass003\LittleBrother\Convert\BedrockDataManager;
 use Nicholass003\LittleBrother\Protocol\ProtocolVersion;
+use Nicholass003\LittleBrother\Utils\Debugger;
+use pocketmine\network\mcpe\convert\BlockStateDictionary;
 use pocketmine\network\mcpe\protocol\ProtocolInfo;
+use pocketmine\utils\Filesystem;
+use function array_fill;
+use function array_filter;
+use function count;
 
-final class BlockRuntimeIdMapper{
+final class RuntimeBlockMapper{
 
-	/** @var BlockRuntimeIdTranslator[] key = clientProtocol */
-	private array $translators = [];
+	/**
+	 * Maps server runtime ID → client runtime ID.
+	 * null = no mapping found (distinct from ID 0 which is a valid air block ID).
+	 *
+	 * @var array<int, array<int, int|null>>
+	 */
+	private array $serverToClientTables = [];
 
-	public function __construct(
-		BedrockDataManager $manager
-	){
-		$serverDict = new BlockStateDictionary(
-			$manager->get(ProtocolInfo::CURRENT_PROTOCOL)->canonicalBlockStates(),
-			$manager->get(ProtocolInfo::CURRENT_PROTOCOL)->blockStateMetaMap()
+	/**
+	 * Maps client runtime ID → server runtime ID.
+	 * null = no mapping found.
+	 *
+	 * @var array<int, array<int, int|null>>
+	 */
+	private array $clientToServerTables = [];
+
+	/** @var array<int, int> */
+	private array $serverFallbackIds = [];
+
+	/** @var array<int, int> */
+	private array $clientFallbackIds = [];
+
+	public function __construct(BedrockDataManager $manager){
+		$serverDict = BlockStateDictionary::loadFromString(
+			Filesystem::fileGetContents($manager->get(ProtocolInfo::CURRENT_PROTOCOL)->canonicalBlockStates()),
+			Filesystem::fileGetContents($manager->get(ProtocolInfo::CURRENT_PROTOCOL)->blockStateMetaMap())
 		);
+
 		foreach(ProtocolVersion::SUPPORTED_PROTOCOLS as $protocol){
-			if($protocol === ProtocolInfo::CURRENT_PROTOCOL) continue;
+			if($protocol === ProtocolInfo::CURRENT_PROTOCOL){
+				continue;
+			}
 
-			$clientDict = new BlockStateDictionary(
-				$manager->get($protocol)->canonicalBlockStates(),
-				$manager->get($protocol)->blockStateMetaMap()
+			$clientDict = BlockStateDictionary::loadFromString(
+				Filesystem::fileGetContents($manager->get($protocol)->canonicalBlockStates()),
+				Filesystem::fileGetContents($manager->get($protocol)->blockStateMetaMap())
 			);
 
-			$this->translators[$protocol] = new BlockRuntimeIdTranslator(
-				$serverDict,
-				$clientDict
-			);
+			$this->buildTables($protocol, $serverDict, $clientDict);
 		}
 	}
 
-	public function get(int $protocol) : ?BlockRuntimeIdTranslator{
-		if($protocol === ProtocolInfo::CURRENT_PROTOCOL){
-			return null;
+	private function buildTables(int $protocol, BlockStateDictionary $server, BlockStateDictionary $client) : void{
+		$serverStates = $server->getStates();
+		$clientStates = $client->getStates();
+		$serverCount = count($serverStates);
+		$clientCount = count($clientStates);
+
+		// null = unmapped. This is critical: 0 is a valid runtime ID (air),
+		// so using 0 as "not found" silently corrupts air block translation.
+		$serverToClient = array_fill(0, $serverCount, null);
+		$clientToServer = array_fill(0, $clientCount, null);
+
+		for($i = 0; $i < $serverCount; $i++){
+			$state = $server->generateDataFromStateId($i);
+			if($state === null) continue;
+			$clientId = $client->lookupStateIdFromData($state);
+			if($clientId !== null){
+				$serverToClient[$i] = $clientId;
+			}
 		}
-		return $this->translators[$protocol] ?? null;
+
+		for($i = 0; $i < $clientCount; $i++){
+			$state = $client->generateDataFromStateId($i);
+			if($state === null) continue;
+			$serverId = $server->lookupStateIdFromData($state);
+			if($serverId !== null){
+				$clientToServer[$i] = $serverId;
+			}
+		}
+
+		$this->serverToClientTables[$protocol] = $serverToClient;
+		$this->clientToServerTables[$protocol] = $clientToServer;
+
+		$this->buildFallbacks($protocol, $serverToClient, $clientToServer);
+
+		$mapped = count(array_filter($serverToClient, fn($v) => $v !== null));
+		Debugger::log("RuntimeBlockMapper: protocol=$protocol serverMapped=$mapped/$serverCount");
+	}
+
+	private function buildFallbacks(int $protocol, array $serverToClient, array $clientToServer) : void{
+		// Fallback: use the first successfully mapped ID rather than hardcoded 0,
+		// so unknown blocks become some valid client block instead of possibly air.
+		$this->serverFallbackIds[$protocol] = 0;
+		foreach($serverToClient as $clientId){
+			if($clientId !== null){
+				$this->serverFallbackIds[$protocol] = $clientId;
+				break;
+			}
+		}
+
+		$this->clientFallbackIds[$protocol] = 0;
+		foreach($clientToServer as $serverId){
+			if($serverId !== null){
+				$this->clientFallbackIds[$protocol] = $serverId;
+				break;
+			}
+		}
+	}
+
+	public function serverToClient(int $protocol, int $runtimeId) : int{
+		$table = $this->serverToClientTables[$protocol] ?? null;
+
+		if($table === null){
+			return $runtimeId;
+		}
+
+		$mapped = $table[$runtimeId] ?? null;
+
+		if($mapped !== null){
+			return $mapped;
+		}
+
+		$fallback = $this->serverFallbackIds[$protocol] ?? 0;
+		Debugger::log("RuntimeBlockMapper: serverToClient id=$runtimeId not found for protocol=$protocol, fallback=$fallback");
+		return $fallback;
+	}
+
+	public function clientToServer(int $protocol, int $runtimeId) : int{
+		$table = $this->clientToServerTables[$protocol] ?? null;
+
+		if($table === null){
+			return $runtimeId;
+		}
+
+		$mapped = $table[$runtimeId] ?? null;
+
+		if($mapped !== null){
+			return $mapped;
+		}
+
+		$fallback = $this->clientFallbackIds[$protocol] ?? 0;
+		Debugger::log("RuntimeBlockMapper: clientToServer id=$runtimeId not found for protocol=$protocol, fallback=$fallback");
+		return $fallback;
+	}
+
+	public function getMappingStats(int $protocol) : array{
+		$serverTable = $this->serverToClientTables[$protocol] ?? [];
+		$clientTable = $this->clientToServerTables[$protocol] ?? [];
+		return [
+			'server_total' => count($serverTable),
+			'server_mapped' => count(array_filter($serverTable, fn($v) => $v !== null)),
+			'client_total' => count($clientTable),
+			'client_mapped' => count(array_filter($clientTable, fn($v) => $v !== null)),
+		];
 	}
 }
