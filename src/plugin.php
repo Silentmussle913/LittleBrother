@@ -105,7 +105,7 @@ class LittleBrother extends PluginBase{
 		);
 
 		$this->schemaRegistry = new SchemaRegistry(new SchemaCompiler());
-		$this->schemaRegistry->loadSchemas(Schemas::getSchemas());
+		$this->schemaRegistry->loadSchemas(Schemas::getSchemas(), true);
 
 		$this->chunkTranslator = new ChunkTranslator(
 			$this->runtimeBlockMapper
