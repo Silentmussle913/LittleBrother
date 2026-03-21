@@ -128,6 +128,19 @@ const FIELD_OVERRIDES = [
 			],
 		],
 	],
+	'LevelEventPacket' => [
+		'eventId' => [
+			[
+				'type' => 'varint',
+				'storeAs' => 'eventId'
+			],
+		],
+		'eventData' => [
+			[
+				'type' => 'event_data_level_event',
+			],
+		],
+	],
 	'ResourcePackStackPacket' => [
 		'behaviorPackStack' => [
 			[
@@ -2364,6 +2377,9 @@ function renderField(array $f, int $indent) : array{
 
 	$lines[] = "{$pad}'name' => '{$f['name']}',";
 	$lines[] = "{$pad}'type' => '{$f['type']}',";
+	if(isset($f['storeAs'])){
+		$lines[] = "{$pad}'storeAs' => '{$f['storeAs']}',";
+	}
 
 	switch($f['type']){
 		case 'array':
