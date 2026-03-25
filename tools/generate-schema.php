@@ -99,33 +99,17 @@ const FIELD_OVERRIDES = [
 				'type' => 'enums_value_indexes'
 			]
 		],
-		'commandData.permission' => [
-			[
-				'until' => 860,
-				'type' => 'u8',
-			],
-			[
-				'since' => 898,
-				'type' => 'string',
-			],
-		],
-		'commandData.chainedSubCommandDataIndexes' => [
+		'commandData' => [
 			[
 				'type' => 'array',
 				'countType' => 'uvarint',
 				'entry' => [
 					[
-						'name' => 'value',
-						'type' => 'le:u16',
-						'until' => 860,
-					],
-					[
-						'name' => 'value',
-						'type' => 'le:u32',
-						'since' => 898,
+						'name' => 'name',
+						'type' => 'command_raw_data',
 					],
 				],
-			],
+			]
 		],
 	],
 	'LevelEventPacket' => [
