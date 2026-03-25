@@ -80,6 +80,14 @@ const PACKETS_OVERRIDES = [
 ];
 
 const FIELD_OVERRIDES = [
+	'AddActorPacket' => [
+		'type' => [
+			[
+				'type' => 'string',
+				'storeAs' => 'actorType'
+			],
+		],
+	],
 	'AvailableCommandsPacket' => [
 		'enumValues' => [
 			[
@@ -122,6 +130,19 @@ const FIELD_OVERRIDES = [
 		'eventData' => [
 			[
 				'type' => 'event_data_level_event',
+			],
+		],
+	],
+	'LevelSoundEventPacket' => [
+		'sound' => [
+			[
+				'type' => 'uvarint',
+				'storeAs' => 'soundId'
+			],
+		],
+		'extraData' => [
+			[
+				'type' => 'level_sound_extra_data',
 			],
 		],
 	],
