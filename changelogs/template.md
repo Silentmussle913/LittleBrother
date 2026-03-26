@@ -1,5 +1,7 @@
 # vX.Y.Z
 
+**Released: d F Y**
+
 For PocketMine-MP API X.X.x (Minecraft: Bedrock Edition)
 
 Short summary describing the purpose of this release.
