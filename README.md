@@ -7,7 +7,7 @@
 A PocketMine-MP plugin that provides a **packet translation layer** allowing players using **older Minecraft Bedrock client versions** to connect to servers running newer protocol versions — without forcing anyone to update.
 
 [![License](https://img.shields.io/github/license/nicholass003/LittleBrother)](LICENSE)
-[![PocketMine API](https://img.shields.io/badge/PocketMine--MP%20API-5.41.0-blue)](https://github.com/pmmp/PocketMine-MP)
+[![PocketMine API](https://img.shields.io/badge/PocketMine--MP%20API-5.42.0-blue)](https://github.com/pmmp/PocketMine-MP)
 [![GitHub Release](https://img.shields.io/github/v/release/nicholass003/LittleBrother)](https://github.com/nicholass003/LittleBrother/releases)
 [![GitHub Downloads](https://img.shields.io/github/downloads/nicholass003/LittleBrother/total)](https://github.com/nicholass003/LittleBrother/releases)
 
@@ -145,12 +145,12 @@ php tools/generate-schema.php --config=schema-config.json
 
 ## 📦 Planned Features
 
-- [ ] 🌐 Multi-version Bedrock client compatibility
-- [ ] 📐 Automatic packet schema generation
-- [ ] 🔄 Schema-based packet translation
-- [ ] 🛠️ Manual packet handlers for complex packets
-- [ ] ⚡ Efficient binary packet rewriting
-- [ ] 🗺️ Protocol data remapping
+- [x] 🌐 Multi-version Bedrock client compatibility
+- [x] 📐 Automatic packet schema generation
+- [x] 🔄 Schema-based packet translation
+- [x] 🛠️ Manual packet handlers for complex packets
+- [x] ⚡ Efficient binary packet rewriting
+- [x] 🗺️ Protocol data remapping
 
 ---
 

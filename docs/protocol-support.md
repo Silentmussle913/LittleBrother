@@ -13,7 +13,7 @@ LittleBrother provides a packet translation layer that allows clients using diff
 
 | Protocol | Minecraft Version | Notes                         |
 | -------- | ----------------- | ----------------------------- |
-| 924      | 1.26.0            | Native PocketMine-MP protocol |
+| 944      | 1.26.10           | Native PocketMine-MP protocol |
 
 The native protocol corresponds to the version used by the running PocketMine-MP server.
 
@@ -23,9 +23,10 @@ The native protocol corresponds to the version used by the running PocketMine-MP
 
 | Protocol | Minecraft Version | Status                   |
 | -------- | ----------------- | ------------------------ |
-| 860      | 1.21.120          | Supported (experimental) |
+| 924      | 1.26.0            | Partial support          |
 | 898      | 1.21.130          | Partial support          |
-| 944      | 1.26.10           | Supported (experimental) |
+| 860      | 1.21.120          | Supported (experimental) |
+| 844      | 1.21.110          | Supported (experimental) |
 
 Experimental protocols may not support all packets or gameplay features. Issues such as desync, visual glitches, or incomplete interactions may occur.
 

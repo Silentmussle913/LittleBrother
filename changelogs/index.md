@@ -10,6 +10,7 @@ Each release includes a detailed list of changes introduced in that version.
 
 | Version                        | Status | Released      | Description                                                                           |
 | ------------------------------ | ------ | ------------- | ------------------------------------------------------------------------------------- |
+| [v1.2.0-ALPHA](1.2.0-ALPHA.md) | Alpha  | 26 March 2026 | Major schema compiler overhaul and v844 support                                       |
 | [v1.1.0-ALPHA](1.1.0-ALPHA.md) | Alpha  | 21 March 2026 | Major protocol expansion (v860, v944) and redesign of the packet translation pipeline |
 | [v1.0.0-ALPHA](1.0.0-ALPHA.md) | Alpha  | 14 March 2026 | Initial public release introducing the packet translation architecture                |
 
