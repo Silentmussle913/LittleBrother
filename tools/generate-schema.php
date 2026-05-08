@@ -168,7 +168,7 @@ const FIELD_OVERRIDES = [
 				]
 			]
 		]
-	]
+	],
 ];
 
 // Used for protocols not yet available in pmmp/BedrockProtocol.
@@ -700,20 +700,57 @@ function githubGet(string $url, ?string $token) : array{
 
 function fetchTagFiles(string $tag, ?string $token) : array{
 	$ref = rawurlencode($tag);
-	$data = githubGet("https://api.github.com/repos/pmmp/BedrockProtocol/git/ref/tags/$ref", $token);
-	$sha = $data['object']['sha'];
-	if($data['object']['type'] === 'tag'){
-		$obj = githubGet($data['object']['url'], $token);
-		$sha = $obj['object']['sha'];
-	}
-	$tree = githubGet("https://api.github.com/repos/pmmp/BedrockProtocol/git/trees/$sha?recursive=1", $token);
-	$files = [];
-	foreach($tree['tree'] as $item){
-		if($item['type'] !== 'blob') continue;
-		if(str_ends_with($item['path'], '.php') && str_starts_with($item['path'], 'src/')){
-			$files[$item['path']] = $item['url'];
+	$commitSha = null;
+
+	try{
+		$response = githubGet(
+			"https://api.github.com/repos/pmmp/BedrockProtocol/git/ref/tags/$ref",
+			$token
+		);
+
+		$commitSha = $response['object']['sha'] ?? null;
+
+		if ($commitSha && ($response['object']['type'] ?? '') === 'tag'){
+			$tagObject = githubGet($response['object']['url'], $token);
+			$commitSha = $tagObject['object']['sha'] ?? null;
+		}
+	}catch(Throwable $e){
+		try{
+			$response = githubGet(
+				"https://api.github.com/repos/pmmp/BedrockProtocol/branches/$ref",
+				$token
+			);
+
+			$commitSha = $response['commit']['sha'] ?? null;
+		}catch(Throwable $e2){
+			throw new Exception(
+				"Failed to find tag or branch with name '{$tag}' in repository pmmp/BedrockProtocol."
+			);
 		}
 	}
+
+	if(!$commitSha){
+		throw new Exception("Unable to determine commit SHA for '{$tag}'.");
+	}
+
+	$treeResponse = githubGet(
+		"https://api.github.com/repos/pmmp/BedrockProtocol/git/trees/{$commitSha}?recursive=1",
+		$token
+	);
+
+	$files = [];
+	if(isset($treeResponse['tree']) && is_array($treeResponse['tree'])){
+		foreach($treeResponse['tree'] as $item){
+			if(($item['type'] ?? '') !== 'blob'){
+				continue;
+			}
+			$path = $item['path'] ?? '';
+			if(str_ends_with($path, '.php') && str_starts_with($path, 'src/')){
+				$files[$path] = $item['url'] ?? '';
+			}
+		}
+	}
+
 	return $files;
 }
 
@@ -2104,6 +2141,10 @@ function inferType(?Node\Expr $expr) : ?string{
 			'CommonTypes::readServerItemStackId' => 'varint',
 
 			'CommonTypes::getRotationByte' => 'rotation_byte',
+
+			'CommonTypes::getNetworkItemStackDescriptor' => 'network_item_stack_descriptor',
+
+			'FullContainerName::read' => 'full_container_name',
 		];
 		$qualified = "$class::$m";
 		if(isset($qualifiedMap[$qualified])) return $qualifiedMap[$qualified];
@@ -2148,6 +2189,7 @@ function defaultForType(string $type) : mixed{
 	return match(true){
 		$type === 'bool' => false,
 		$type === 'string' => '',
+		$type === 'optional' => null,
 		str_starts_with($type, 'le:f') => 0.0,
 		default => 0,
 	};
@@ -2488,6 +2530,8 @@ function exportArray(array $data, int $indent = 0) : string{
 			$lines .= $padInner . "'$k' => '$v',\n";
 		}elseif(is_bool($v)){
 			$lines .= $padInner . "'$k' => " . ($v ? 'true' : 'false') . ",\n";
+		}elseif($v === null){
+			$lines .= $padInner . "'$k' => null,\n";
 		}else{
 			$lines .= $padInner . "'$k' => $v,\n";
 		}
