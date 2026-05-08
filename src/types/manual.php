@@ -97,6 +97,7 @@ final class ManualTypeRegistry{
 		self::registerUpdateAbilitiesPacket($registry);
 		self::registerEventDataLevelEvent($registry);
 		self::registerLevelSoundExtraData($registry);
+		self::registerFullContainerName($registry);
 	}
 
 	private static function registerCacheableNbt(TypeRegistry $registry) : void{
@@ -1754,6 +1755,24 @@ final class ManualTypeRegistry{
 					$extraData = $mapped;
 				}
 				VarInt::writeSignedInt($out, $extraData);
+			}
+		);
+	}
+
+	private static function registerFullContainerName(TypeRegistry $registry) : void{
+		$registry->register(
+			'full_container_name',
+			reader: static function(ByteBufferReader $in, int $protocol, PacketContext $context) use($registry) : array{
+				$containerId = Byte::readUnsigned($in);
+				$dynamicId = CommonTypes::readOptional($in, LE::readUnsignedInt(...));
+				return [
+					'containerId' => $containerId,
+					'dynamicId' => $dynamicId
+				];
+			},
+			writer: static function(ByteBufferWriter $out, array $v, int $protocol, PacketContext $context) use($registry) : void{
+				Byte::writeUnsigned($out, $v['containerId']);
+				CommonTypes::writeOptional($out, $v['dynamicId'] ?? null, LE::writeUnsignedInt(...));
 			}
 		);
 	}
