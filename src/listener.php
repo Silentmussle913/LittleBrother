@@ -24,6 +24,7 @@ declare(strict_types=1);
 
 namespace Nicholass003\LittleBrother;
 
+use Nicholass003\LittleBrother\Auth\LoginProcessor;
 use Nicholass003\LittleBrother\Protocol\PacketSender;
 use Nicholass003\LittleBrother\Protocol\ProtocolVersion;
 use Nicholass003\LittleBrother\Utils\Debugger;
@@ -39,8 +40,6 @@ use pocketmine\network\mcpe\protocol\ProtocolInfo;
 use pocketmine\network\mcpe\protocol\RequestNetworkSettingsPacket;
 use pocketmine\network\mcpe\protocol\ResourcePackChunkDataPacket;
 use function in_array;
-use function json_decode;
-use function json_encode;
 use function strlen;
 
 class EventListener implements Listener{
@@ -59,13 +58,15 @@ class EventListener implements Listener{
 		$packet = $event->getPacket();
 		$session = $event->getOrigin();
 		Debugger::debug("Receive " . $packet->getName(), $packet instanceof PlayerAuthInputPacket);
-		// HACK: force add missing Certificate field to authInfoJson
 		if($packet instanceof LoginPacket){
-			$authInfo = json_decode($packet->authInfoJson, true);
-			if(!isset($authInfo["Certificate"])){
-				$authInfo["Certificate"] = "";
+			$event->cancel();
+			try{
+				$result = LoginProcessor::process($session, $packet);
+				LoginProcessor::complete($session, $result);
+			}catch(\Throwable $e){
+				$session->disconnect("Login failed: " . $e->getMessage());
 			}
-			$packet->authInfoJson = json_encode($authInfo);
+			return;
 		}
 
 		if(!($packet instanceof RequestNetworkSettingsPacket)) return;
