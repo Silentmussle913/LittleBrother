@@ -40,15 +40,11 @@ use pocketmine\network\mcpe\protocol\ProtocolInfo;
 use pocketmine\network\mcpe\protocol\RequestNetworkSettingsPacket;
 use pocketmine\network\mcpe\protocol\ResourcePackChunkDataPacket;
 use function in_array;
-use function strlen;
 
 class EventListener implements Listener{
 
 	/** @var \ReflectionMethod|null Cached reflection for NetworkSession::flushGamePacketQueue */
 	private static ?\ReflectionMethod $flushMethod = null;
-
-	/** @var \ReflectionProperty|null Cached reflection for NetworkSession::$packetPool */
-	private static ?\ReflectionProperty $packetPoolProp = null;
 
 	public function __construct(
 		private LittleBrother $plugin
@@ -105,7 +101,6 @@ class EventListener implements Listener{
 		$packets = $event->getPackets();
 		$targets = $event->getTargets();
 		$storage = $this->plugin->getProtocolStorage();
-		$cache = $this->plugin->getCache();
 
 		foreach($packets as $packet){
 			if($packet instanceof ResourcePackChunkDataPacket){
@@ -113,7 +108,7 @@ class EventListener implements Listener{
 			}
 		}
 
-		$hasOldClient = false;
+		$hasOldClient = true;
 		foreach($targets as $target){
 			$protocol = $storage->get($target);
 			if($protocol !== null && $protocol !== ProtocolInfo::CURRENT_PROTOCOL){
@@ -133,54 +128,9 @@ class EventListener implements Listener{
 			$writer->clear();
 			$buffer = NetworkSession::encodePacketTimed($writer, $packet);
 
-			$nativeTargets = [];
-
 			foreach($targets as $target){
-				$protocol = $storage->get($target);
-
-				if($protocol === null || $protocol === ProtocolInfo::CURRENT_PROTOCOL){
-					$nativeTargets[] = $target;
-					continue;
-				}
-
-				if(!in_array($protocol, ProtocolVersion::SUPPORTED_PROTOCOLS, true)){
-					$nativeTargets[] = $target;
-					continue;
-				}
-
-				$translated = $cache->get($protocol, $buffer);
-				if($translated === null){
-					try{
-						$result = $this->plugin->getTranslator()->translateOutbound($protocol, $buffer);
-					}catch(\Throwable $e){
-						Debugger::debug("Translator error in packet " . $packet->getName());
-						Debugger::debug($e->getMessage());
-						continue;
-					}
-					if($result === null){
-						Debugger::debug("Drop for old client: " . $packet->getName());
-						continue;
-					}
-					$translated = $result;
-					Debugger::debug("Packet " . $packet->getName() .
-						" size before: " . strlen($buffer) .
-						" after: " . strlen($translated), $packet instanceof PlayerAuthInputPacket);
-					$cache->set($protocol, $buffer, $translated);
-				}
-				Debugger::debug("Translate " . $packet->getName(), $packet instanceof PlayerAuthInputPacket);
-				$target->addToSendBuffer($translated);
-				$this->plugin->getPacketBatchTranslator()->setBypass(true);
+				$target->addToSendBuffer($buffer);
 				$this->flushSession($target);
-				$this->plugin->getPacketBatchTranslator()->setBypass(false);
-			}
-
-			if(!empty($nativeTargets)){
-				foreach($nativeTargets as $nativeTarget){
-					$nativeTarget->addToSendBuffer($buffer);
-					$this->plugin->getPacketBatchTranslator()->setBypass(true);
-					$this->flushSession($nativeTarget);
-					$this->plugin->getPacketBatchTranslator()->setBypass(false);
-				}
 			}
 		}
 	}
