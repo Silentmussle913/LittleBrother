@@ -117,6 +117,7 @@ class PacketBatchTranslator{
 				}
 
 				Debugger::log("Packet size before: " . strlen($buffer), $packetId === ProtocolInfo::PLAYER_AUTH_INPUT_PACKET);
+				Debugger::log("Direction: " . ($inbound ? "Client -> Server" : "Server -> Client"));
 
 				$translated = $inbound ? $this->translator->translateInbound(
 					$protocol,
