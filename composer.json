@@ -6,7 +6,7 @@
         "pocketmine/pocketmine-mp": "^5.0.0",
         "bstats/pocketmine-mp": "^1.0.0",
         "paroxity/commando": "dev-master",
-        "nikic/php-parser": "^5.7"
+        "nicholass003/axiom": "dev-master"
     },
     "require-dev": {
         "sof3/pharynx": "^0.3.6"
@@ -15,6 +15,10 @@
         {
             "type": "vcs",
             "url": "https://github.com/Paroxity/Commando"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/nicholass003/Axiom"
         }
     ],
     "authors": [
@@ -24,7 +28,7 @@
         }
     ],
     "autoload": {
-        "classmap": ["src", "build"]
+        "classmap": ["src"]
     },
     "scripts": {
         "build": "php -dphar.readonly=0 vendor/bin/pharynx -i=. -c -p=LittleBrother.phar"

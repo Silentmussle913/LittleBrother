@@ -22,18 +22,17 @@
 
 declare(strict_types=1);
 
-namespace Nicholass003\LittleBrother\Protocol\Translator\Handler;
+namespace Nicholass003\LittleBrother\Protocol\Translator\Runtime;
 
-use Nicholass003\LittleBrother\Protocol\Translator\ManualPacketHandler;
-use pmmp\encoding\ByteBufferReader;
+use Nicholass003\Axiom\Packet\InventoryContentPacket;
+use Nicholass003\Axiom\Packet\Packet;
+use function assert;
 
-final class ItemStackResponsePacketHandler extends ManualPacketHandler{
+class InventoryContentTranslationHandler extends ItemStackWrapperTranslationHandler{
 
-	public function translateInbound(int $protocol, ByteBufferReader $in) : string{
-		return $this->passthrough($in);
-	}
+	public function translate(int $protocol, Packet $packet, bool $inbound) : void{
+		assert($packet instanceof InventoryContentPacket);
 
-	public function translateOutbound(int $protocol, ByteBufferReader $in) : string{
-		return $this->passthrough($in);
+		$packet->items = $this->translateWrappers($packet->items, $protocol, $inbound);
 	}
 }

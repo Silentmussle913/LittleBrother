@@ -22,18 +22,20 @@
 
 declare(strict_types=1);
 
-namespace Nicholass003\LittleBrother\Protocol\Translator\Handler;
+namespace Nicholass003\LittleBrother\Protocol\Translator\Runtime;
 
-use Nicholass003\LittleBrother\Protocol\Translator\ManualPacketHandler;
-use pmmp\encoding\ByteBufferReader;
+use Nicholass003\Axiom\Packet\MobArmorEquipmentPacket;
+use Nicholass003\Axiom\Packet\Packet;
+use function assert;
 
-final class PlayerAuthInputPacketHandler extends ManualPacketHandler{
+class MobArmorEquipmentTranslationHandler extends ItemStackWrapperTranslationHandler{
 
-	public function translateInbound(int $protocol, ByteBufferReader $in) : string{
-		return $this->passthrough($in);
-	}
-
-	public function translateOutbound(int $protocol, ByteBufferReader $in) : string{
-		return $this->passthrough($in);
+	public function translate(int $protocol, Packet $packet, bool $inbound) : void{
+		assert($packet instanceof MobArmorEquipmentPacket);
+		$packet->head = $this->translateWrapper($packet->head, $protocol, $inbound);
+		$packet->chest = $this->translateWrapper($packet->chest, $protocol, $inbound);
+		$packet->legs = $this->translateWrapper($packet->legs, $protocol, $inbound);
+		$packet->feet = $this->translateWrapper($packet->feet, $protocol, $inbound);
+		$packet->body = $this->translateWrapper($packet->body, $protocol, $inbound);
 	}
 }
