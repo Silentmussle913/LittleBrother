@@ -7,7 +7,7 @@
 A PocketMine-MP plugin that provides a **packet translation layer** allowing players using **older Minecraft Bedrock client versions** to connect to servers running newer protocol versions — without forcing anyone to update.
 
 [![License](https://img.shields.io/github/license/nicholass003/LittleBrother)](LICENSE)
-[![PocketMine API](https://img.shields.io/badge/PocketMine--MP%20API-5.42.0-blue)](https://github.com/pmmp/PocketMine-MP)
+[![PocketMine API](https://img.shields.io/badge/PocketMine--MP%20API-5.43.0-blue)](https://github.com/pmmp/PocketMine-MP)
 [![GitHub Release](https://img.shields.io/github/v/release/nicholass003/LittleBrother)](https://github.com/nicholass003/LittleBrother/releases)
 [![GitHub Downloads](https://img.shields.io/github/downloads/nicholass003/LittleBrother/total)](https://github.com/nicholass003/LittleBrother/releases)
 
@@ -24,11 +24,13 @@ A PocketMine-MP plugin that provides a **packet translation layer** allowing pla
 
 ## ⚠️ Project Status
 
-> **🚧 Early Development**
+> **🚧 Active Alpha Development**
 >
-> LittleBrother is in active early-stage development and is **not yet ready for production use**.
+> LittleBrother is currently in active development and the core translation system is evolving rapidly.
 >
-> The packet translation system, schema generator, and protocol compatibility layer are still under heavy development. Things may break or change at any time.
+> While many packet translators and runtime mappings are already implemented and functioning correctly, protocol translation support is still considered experimental and may vary depending on the protocol version, gameplay feature, or packet type.
+>
+> Stability and compatibility continue to improve between releases, but issues such as desync, incomplete packet handling, or runtime mapping inconsistencies may still occur.
 
 ---
 
@@ -49,14 +51,14 @@ Instead of forcing players to update — or downgrading your server — LittleBr
 
 ## 🧠 How It Works
 
-LittleBrother sits silently between the client and the server, translating packets in both directions in real time.
+LittleBrother sits silently between the client and the server, translating packets in both directions in real time using the new **Axiom runtime translation architecture**.
 
-```
+```text
 Client (Old Protocol)
         │
         ▼
 ┌───────────────────┐
-│  Inbound Packet   │  ← Translates old → new
+│  Runtime Inbound  │  ← Translates old → new
 │    Translator     │
 └───────────────────┘
         │
@@ -65,7 +67,7 @@ PocketMine Server (Latest Protocol)
         │
         ▼
 ┌───────────────────┐
-│  Outbound Packet  │  ← Translates new → old
+│ Runtime Outbound  │  ← Translates new → old
 │    Translator     │
 └───────────────────┘
         │
@@ -73,26 +75,26 @@ PocketMine Server (Latest Protocol)
 Client (Old Protocol)
 ```
 
-> Old clients send packets → LittleBrother upgrades them → Server processes normally → LittleBrother downgrades the response → Old client receives compatible packets. ✨
+> Old clients send packets → LittleBrother translates them at runtime → Server processes normally → Responses are translated back into compatible packets. ✨
 
 ---
 
 ## 🏗️ Architecture Overview
 
-LittleBrother is built with a clean, modular translation architecture designed to scale across many protocol versions.
+LittleBrother is built around a modular runtime translation architecture designed to scale across multiple Bedrock protocol versions.
 
-| Component | Description |
-|---|---|
-| 🔄 **Protocol Translator** | Core engine — handles packet translation between protocol versions |
-| 📋 **Schema Translator** | Uses protocol schemas to automatically translate packet fields |
-| 🛠️ **Manual Packet Handlers** | Handles edge-case packets too complex for schema-based translation |
-| 🗂️ **Type Registry** | Defines binary serialization types used across all supported protocols |
+| Component                      | Description                                                                 |
+| ------------------------------ | --------------------------------------------------------------------------- |
+| 🔄 **Runtime Translator**      | Core runtime engine handling packet translation between protocol versions   |
+| ⚡ **Axiom Runtime Codecs**     | Dynamic protocol-aware serialization and deserialization system             |
+| 🛠️ **Manual Packet Handlers** | Handles complex packets where automatic runtime translation is insufficient |
+| 🗺️ **Runtime Mapping System** | Handles block, item, and runtime ID remapping across versions               |
 
 ---
 
 ## 🛠️ Development Tools
 
-LittleBrother ships with powerful internal tools that automate large parts of the development workflow.
+LittleBrother ships with internal tools that assist protocol research, runtime mapping, and development workflows.
 
 ---
 
@@ -101,16 +103,19 @@ LittleBrother ships with powerful internal tools that automate large parts of th
 Downloads the required Bedrock protocol data from **pmmp/BedrockData**.
 
 **Fetched data includes:**
-- `canonical_block_states.nbt`
-- `block_state_meta_map.json`
-- `required_item_list.json`
+
+* `canonical_block_states.nbt`
+* `block_state_meta_map.json`
+* `required_item_list.json`
 
 Stored per protocol version inside:
-```
+
+```text
 resources/data/bedrock/<protocol>/
 ```
 
 **Usage:**
+
 ```bash
 php tools/generate-protocol-data.php --config=schema-config.json
 ```
@@ -119,72 +124,30 @@ The script automatically fetches data from GitHub, caches results locally, and s
 
 ---
 
-### 📐 `generate-schema.php`
-
-Automatically generates **packet schemas** by analyzing the source code of `pmmp/BedrockProtocol`.
-
-**How it works:**
-1. Downloads packet source code for each protocol version
-2. Parses the PHP AST
-3. Detects packet fields automatically
-4. Merges field differences across versions
-5. Produces a final schema file at `build/schemas.php`
-
-**Usage:**
-```bash
-php tools/generate-schema.php --config=schema-config.json
-```
-
-**Features:**
-- 🌲 AST-based packet field extraction
-- 🔍 Automatic detection of field additions, removals, optional fields, arrays, and composite structures
-- 🏷️ Automatic `since` / `until` version tagging
-- 🔧 Manual packet override support
-
----
-
 ## 📦 Planned Features
 
-- [x] 🌐 Multi-version Bedrock client compatibility
-- [x] 📐 Automatic packet schema generation
-- [x] 🔄 Schema-based packet translation
-- [x] 🛠️ Manual packet handlers for complex packets
-- [x] ⚡ Efficient binary packet rewriting
-- [x] 🗺️ Protocol data remapping
-
----
-
-## 📚 Documentation
-
-| Document | Description |
-|---|---|
-| 📄 [Protocol Support](docs/protocol-support.md) | Compatibility matrix — which client versions are supported and translation status per packet |
-| 📋 [Changelog Index](changelogs/index.md) | Full history of all releases and changes |
-
----
-
-## 📥 Installation *(Future)*
-
-Once the plugin is production-ready:
-
-1. Download `LittleBrother.phar`
-2. Place it inside your `/plugins/` folder
-3. Restart PocketMine-MP
-
-> 📌 Watch this repo for updates on the first stable release!
+* [x] 🌐 Multi-version Bedrock client compatibility
+* [x] ⚡ Runtime-based packet translation
+* [x] 🛠️ Manual packet handlers for complex packets
+* [x] 🗺️ Runtime ID remapping system
+* [x] 🔄 Bidirectional protocol translation
+* [ ] 🌍 Broader legacy protocol support
+* [ ] ⚙️ Improved gameplay synchronization across versions
 
 ---
 
 ## 📌 Important Notes
 
-LittleBrother is a **full packet translation system**, not just a handshake modifier.
+LittleBrother is a **full runtime packet translation system**, not just a handshake modifier.
 
 The plugin handles:
-- Packet structure changes across versions
-- Field additions and removals
-- Protocol-level differences
 
-> ⚠️ Very large version gaps may still require additional manual adjustments. We're working on minimizing this.
+* Packet structure differences across versions
+* Runtime ID remapping
+* Protocol-level serialization changes
+* Dynamic packet translation between supported protocols
+
+> ⚠️ Very large version gaps may still require additional manual handling and runtime adjustments.
 
 ---
 
