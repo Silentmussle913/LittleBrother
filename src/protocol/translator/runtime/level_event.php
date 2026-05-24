@@ -24,37 +24,39 @@ declare(strict_types=1);
 
 namespace Nicholass003\LittleBrother\Protocol\Translator\Runtime;
 
-use Nicholass003\Axiom\Data\Type\SubChunk\UpdateSubChunkBlocksPacketEntry;
+use Nicholass003\Axiom\Enum\LevelEventType;
+use Nicholass003\Axiom\Packet\LevelEventPacket;
 use Nicholass003\Axiom\Packet\Packet;
-use Nicholass003\Axiom\Packet\UpdateSubChunkBlocksPacket;
 use function assert;
 
-class UpdateSubChunkBlocksTranslationHandler extends RuntimeIdTranslationHandler{
+final class LevelEventPacketHandler extends RuntimeIdTranslationHandler{
 
 	public function translate(int $protocol, Packet $packet, bool $inbound) : void{
-		assert($packet instanceof UpdateSubChunkBlocksPacket);
+		assert($packet instanceof LevelEventPacket);
 
-		$layer0Updates = [];
-		foreach($packet->layer0Updates as $v){
-			$layer0Updates[] = new UpdateSubChunkBlocksPacketEntry(
-				$v->blockPosition,
-				$this->translateBlockId($v->blockRuntimeId, $protocol, $inbound),
-				$v->flags,
-				$v->syncedUpdateType,
-				$v->actorUniqueId
-			);
+		if($inbound){
+			return;
 		}
-		$packet->layer0Updates = $layer0Updates;
-		$layer1Updates = [];
-		foreach($packet->layer1Updates as $v){
-			$layer1Updates[] = new UpdateSubChunkBlocksPacketEntry(
-				$v->blockPosition,
-				$this->translateBlockId($v->blockRuntimeId, $protocol, $inbound),
-				$v->flags,
-				$v->syncedUpdateType,
-				$v->actorUniqueId
-			);
-		}
-		$packet->layer1Updates = $layer1Updates;
+
+		$eventId = $packet->eventId;
+		$data = $packet->eventData;
+
+		$packet->eventData = match($eventId){
+			LevelEventType::PARTICLE_DESTROY,
+			LevelEventType::PARTICLE_BLOCK_FORCE_FIELD,
+			LevelEventType::PARTICLE_BLOCK_EXPLODE,
+			LevelEventType::BLOCK_START_BREAK,
+			LevelEventType::BLOCK_STOP_BREAK => $this->translateBlockId($data, $protocol, $inbound),
+			LevelEventType::PARTICLE_PUNCH_BLOCK => $this->translatePunchBlock($data, $protocol, $inbound),
+			default => $data,
+		};
+	}
+
+	private function translatePunchBlock(int $data, int $protocol, bool $inbound) : int{
+		$blockRuntimeId = $data & 0xFFFFFF;
+		$face = ($data >> 24) & 0xFF;
+
+		$newBlockId = $this->translateBlockId($blockRuntimeId, $protocol, $inbound);
+		return $newBlockId | ($face << 24);
 	}
 }

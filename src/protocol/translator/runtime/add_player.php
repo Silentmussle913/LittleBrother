@@ -24,37 +24,15 @@ declare(strict_types=1);
 
 namespace Nicholass003\LittleBrother\Protocol\Translator\Runtime;
 
-use Nicholass003\Axiom\Data\Type\SubChunk\UpdateSubChunkBlocksPacketEntry;
+use Nicholass003\Axiom\Packet\AddPlayerPacket;
 use Nicholass003\Axiom\Packet\Packet;
-use Nicholass003\Axiom\Packet\UpdateSubChunkBlocksPacket;
 use function assert;
 
-class UpdateSubChunkBlocksTranslationHandler extends RuntimeIdTranslationHandler{
+class AddPlayerTranslationHandler extends ItemStackWrapperTranslationHandler{
 
 	public function translate(int $protocol, Packet $packet, bool $inbound) : void{
-		assert($packet instanceof UpdateSubChunkBlocksPacket);
+		assert($packet instanceof AddPlayerPacket);
 
-		$layer0Updates = [];
-		foreach($packet->layer0Updates as $v){
-			$layer0Updates[] = new UpdateSubChunkBlocksPacketEntry(
-				$v->blockPosition,
-				$this->translateBlockId($v->blockRuntimeId, $protocol, $inbound),
-				$v->flags,
-				$v->syncedUpdateType,
-				$v->actorUniqueId
-			);
-		}
-		$packet->layer0Updates = $layer0Updates;
-		$layer1Updates = [];
-		foreach($packet->layer1Updates as $v){
-			$layer1Updates[] = new UpdateSubChunkBlocksPacketEntry(
-				$v->blockPosition,
-				$this->translateBlockId($v->blockRuntimeId, $protocol, $inbound),
-				$v->flags,
-				$v->syncedUpdateType,
-				$v->actorUniqueId
-			);
-		}
-		$packet->layer1Updates = $layer1Updates;
+		$packet->item = $this->translateWrapper($packet->item, $protocol, $inbound);
 	}
 }

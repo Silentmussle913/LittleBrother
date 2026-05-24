@@ -24,94 +24,15 @@ declare(strict_types=1);
 
 namespace Nicholass003\LittleBrother\Protocol\Translator\Runtime;
 
-use Nicholass003\LittleBrother\Convert\Block\RuntimeBlockMapper;
-use Nicholass003\LittleBrother\LittleBrother;
-use Nicholass003\LittleBrother\Protocol\Translator\RuntimePacketHandler;
-use Nicholass003\LittleBrother\Schema\PacketContext;
-use Nicholass003\LittleBrother\Utils\Debugger;
-use pmmp\encoding\ByteBufferReader;
-use pmmp\encoding\ByteBufferWriter;
-use pmmp\encoding\VarInt;
-use function count;
+use Nicholass003\Axiom\Packet\Packet;
+use Nicholass003\Axiom\Packet\UpdateBlockPacket;
+use function assert;
 
-class UpdateBlockRuntimeHandler implements RuntimePacketHandler{
+class UpdateBlockTranslationHandler extends RuntimeIdTranslationHandler{
 
-	/** @var array<int, int> */
-	private array $mappingCache = [];
+	public function translate(int $protocol, Packet $packet, bool $inbound) : void{
+		assert($packet instanceof UpdateBlockPacket);
 
-	public function __construct(
-		private RuntimeBlockMapper $mapper
-	){}
-
-	public function translateOutbound(int $protocol, string $payload) : string{
-		$in = new ByteBufferReader($payload);
-		$out = new ByteBufferWriter();
-		$context = new PacketContext(LittleBrother::getInstance()->getTypeRegistryFactory()->getTypeRegistry());
-
-		$pos = $context->getTypeRegistry()->read($in, 'blockpos', $protocol, $context);
-		$context->getTypeRegistry()->write($out, 'blockpos', $pos, $protocol, $context);
-
-		$runtimeId = VarInt::readUnsignedInt($in);
-
-		$runtimeId = $this->mapper->serverToClient($protocol, $runtimeId);
-
-		VarInt::writeUnsignedInt($out, $runtimeId);
-
-		$flags = VarInt::readUnsignedInt($in);
-		$layer = VarInt::readUnsignedInt($in);
-
-		VarInt::writeUnsignedInt($out, $flags);
-		VarInt::writeUnsignedInt($out, $layer);
-
-		return $out->getData();
-	}
-
-	public function translateInbound(int $protocol, string $payload) : string{
-		$in = new ByteBufferReader($payload);
-		$out = new ByteBufferWriter();
-		$context = new PacketContext(LittleBrother::getInstance()->getTypeRegistryFactory()->getTypeRegistry());
-
-		$pos = $context->getTypeRegistry()->read($in, 'blockpos', $protocol, $context);
-		$context->getTypeRegistry()->write($out, 'blockpos', $pos, $protocol, $context);
-
-		$runtimeId = VarInt::readUnsignedInt($in);
-
-		$cacheKey = ($protocol << 17) | $runtimeId;
-
-		if(isset($this->mappingCache[$cacheKey])){
-			$mappedId = $this->mappingCache[$cacheKey];
-			Debugger::debug("Inbound Runtime ID cached: $runtimeId -> $mappedId");
-			$runtimeId = $mappedId;
-		}else{
-			Debugger::debug("Inbound Runtime ID Before : " . $runtimeId);
-
-			$mappedId = $this->mapper->clientToServer($protocol, $runtimeId);
-
-			if($mappedId !== $runtimeId){
-				Debugger::debug("Inbound Runtime ID After : " . $mappedId);
-
-				if(count($this->mappingCache) < 10000){
-					$this->mappingCache[$cacheKey] = $mappedId;
-				}
-			}else{
-				Debugger::debug("Inbound Runtime ID unchanged (already in target format)");
-			}
-
-			$runtimeId = $mappedId;
-		}
-
-		VarInt::writeUnsignedInt($out, $runtimeId);
-
-		$flags = VarInt::readUnsignedInt($in);
-		$layer = VarInt::readUnsignedInt($in);
-
-		VarInt::writeUnsignedInt($out, $flags);
-		VarInt::writeUnsignedInt($out, $layer);
-
-		return $out->getData();
-	}
-
-	public function clearCache() : void{
-		$this->mappingCache = [];
+		$packet->blockRuntimeId = $this->translateBlockId($packet->blockRuntimeId, $protocol, false);
 	}
 }
