@@ -22,31 +22,17 @@
 
 declare(strict_types=1);
 
-namespace Nicholass003\LittleBrother\Schema;
+namespace Nicholass003\LittleBrother\Protocol\Translator\Runtime;
 
-use Nicholass003\LittleBrother\Types\TypeRegistry;
+use Nicholass003\Axiom\Packet\MobEquipmentPacket;
+use Nicholass003\Axiom\Packet\Packet;
+use function assert;
 
-final class PacketContext{
+class MobEquipmentTranslationHandler extends ItemStackWrapperTranslationHandler{
 
-	public function __construct(
-		private readonly TypeRegistry $registry
-	){}
+	public function translate(int $protocol, Packet $packet, bool $inbound) : void{
+		assert($packet instanceof MobEquipmentPacket);
 
-	private array $storage = [];
-
-	public function set(string $key, mixed $value) : void{
-		$this->storage[$key] = $value;
-	}
-
-	public function get(string $key) : mixed{
-		return $this->storage[$key] ?? null;
-	}
-
-	public function clear() : void{
-		$this->storage = [];
-	}
-
-	public function getTypeRegistry() : TypeRegistry{
-		return $this->registry;
+		$packet->item = $this->translateWrapper($packet->item, $protocol, $inbound);
 	}
 }

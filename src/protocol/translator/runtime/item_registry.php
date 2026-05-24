@@ -24,37 +24,36 @@ declare(strict_types=1);
 
 namespace Nicholass003\LittleBrother\Protocol\Translator\Runtime;
 
-use Nicholass003\Axiom\Data\Type\SubChunk\UpdateSubChunkBlocksPacketEntry;
+use Nicholass003\Axiom\Data\Type\ItemTypeEntry;
+use Nicholass003\Axiom\Packet\ItemRegistryPacket;
 use Nicholass003\Axiom\Packet\Packet;
-use Nicholass003\Axiom\Packet\UpdateSubChunkBlocksPacket;
+use Nicholass003\LittleBrother\Convert\Item\ItemRuntimeIdMapper;
+use Nicholass003\LittleBrother\Protocol\Translator\RuntimePacketHandler;
 use function assert;
 
-class UpdateSubChunkBlocksTranslationHandler extends RuntimeIdTranslationHandler{
+class ItemRegistryTranslationHandler implements RuntimePacketHandler{
+
+	public function __construct(
+		private ItemRuntimeIdMapper $itemMapper
+	){}
 
 	public function translate(int $protocol, Packet $packet, bool $inbound) : void{
-		assert($packet instanceof UpdateSubChunkBlocksPacket);
+		assert($packet instanceof ItemRegistryPacket);
 
-		$layer0Updates = [];
-		foreach($packet->layer0Updates as $v){
-			$layer0Updates[] = new UpdateSubChunkBlocksPacketEntry(
-				$v->blockPosition,
-				$this->translateBlockId($v->blockRuntimeId, $protocol, $inbound),
-				$v->flags,
-				$v->syncedUpdateType,
-				$v->actorUniqueId
+		$itemMapper = $this->itemMapper->get($protocol);
+		if($itemMapper === null){
+			return;
+		}
+
+		$entries = [];
+		foreach($packet->entries as $i => $entry){
+			$entries[$i] = new ItemTypeEntry(
+				$inbound ? $itemMapper->stringIdClientToServer($entry->stringId) : $itemMapper->stringIdServerToClient($entry->stringId),
+				$inbound ? $itemMapper->clientToServer($entry->numericId) : $itemMapper->serverToClient($entry->numericId),
+				$entry->componentBased,
+				$entry->version,
+				$entry->componentNbt
 			);
 		}
-		$packet->layer0Updates = $layer0Updates;
-		$layer1Updates = [];
-		foreach($packet->layer1Updates as $v){
-			$layer1Updates[] = new UpdateSubChunkBlocksPacketEntry(
-				$v->blockPosition,
-				$this->translateBlockId($v->blockRuntimeId, $protocol, $inbound),
-				$v->flags,
-				$v->syncedUpdateType,
-				$v->actorUniqueId
-			);
-		}
-		$packet->layer1Updates = $layer1Updates;
 	}
 }

@@ -24,29 +24,15 @@ declare(strict_types=1);
 
 namespace Nicholass003\LittleBrother\Protocol\Translator\Runtime;
 
-use pmmp\encoding\ByteBufferReader;
-use pmmp\encoding\ByteBufferWriter;
-use pmmp\encoding\VarInt;
+use Nicholass003\Axiom\Packet\Packet;
+use Nicholass003\Axiom\Packet\UpdateBlockSyncedPacket;
+use function assert;
 
-class UpdateBlockSyncedRuntimeHandler extends UpdateBlockRuntimeHandler{
+class UpdateBlockSyncedTranslationHandler extends RuntimeIdTranslationHandler{
 
-	public function translateOutbound(int $protocol, string $payload) : string{
-		$payload = parent::translateOutbound($protocol, $payload);
-		$in = new ByteBufferReader($payload);
-		$out = new ByteBufferWriter();
+	public function translate(int $protocol, Packet $packet, bool $inbound) : void{
+		assert($packet instanceof UpdateBlockSyncedPacket);
 
-		VarInt::writeUnsignedLong($out, VarInt::readUnsignedLong($in));
-		VarInt::writeUnsignedLong($out, VarInt::readUnsignedLong($in));
-		return $payload;
-	}
-
-	public function translateInbound(int $protocol, string $payload) : string{
-		$payload = parent::translateInbound($protocol, $payload);
-		$in = new ByteBufferReader($payload);
-		$out = new ByteBufferWriter();
-
-		VarInt::writeUnsignedLong($out, VarInt::readUnsignedLong($in));
-		VarInt::writeUnsignedLong($out, VarInt::readUnsignedLong($in));
-		return $payload;
+		$packet->blockRuntimeId = $this->translateBlockId($packet->blockRuntimeId, $protocol, false);
 	}
 }

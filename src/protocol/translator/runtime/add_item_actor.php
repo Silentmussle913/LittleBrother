@@ -22,18 +22,17 @@
 
 declare(strict_types=1);
 
-namespace Nicholass003\LittleBrother\Schema;
+namespace Nicholass003\LittleBrother\Protocol\Translator\Runtime;
 
-final class PacketSchema{
+use Nicholass003\Axiom\Packet\AddItemActorPacket;
+use Nicholass003\Axiom\Packet\Packet;
+use function assert;
 
-	/**
-	 * @param list<array<string, mixed>> $instructions
-	 */
-	public function __construct(
-		public readonly string $packet,
-		public readonly int    $packetId,
-		public readonly array  $instructions,
-		public readonly ?int   $since = null,
-		public readonly bool   $manual = false,
-	){}
+class AddItemActorTranslationHandler extends ItemStackWrapperTranslationHandler{
+
+	public function translate(int $protocol, Packet $packet, bool $inbound) : void{
+		assert($packet instanceof AddItemActorPacket);
+
+		$packet->item = $this->translateWrapper($packet->item, $protocol, $inbound);
+	}
 }
