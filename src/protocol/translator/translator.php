@@ -25,6 +25,7 @@ declare(strict_types=1);
 namespace Nicholass003\LittleBrother\Protocol\Translator;
 
 use Nicholass003\Axiom\Axiom;
+use Nicholass003\Axiom\Packet\AddActorPacket;
 use Nicholass003\Axiom\Packet\AddItemActorPacket;
 use Nicholass003\Axiom\Packet\AddPlayerPacket;
 use Nicholass003\Axiom\Packet\InventoryContentPacket;
@@ -41,6 +42,7 @@ use Nicholass003\Axiom\Packet\UpdateBlockPacket;
 use Nicholass003\Axiom\Packet\UpdateBlockSyncedPacket;
 use Nicholass003\Axiom\Packet\UpdateSubChunkBlocksPacket;
 use Nicholass003\LittleBrother\LittleBrother;
+use Nicholass003\LittleBrother\Protocol\Translator\Runtime\AddActorTranslationHandler;
 use Nicholass003\LittleBrother\Protocol\Translator\Runtime\AddItemActorTranslationHandler;
 use Nicholass003\LittleBrother\Protocol\Translator\Runtime\AddPlayerTranslationHandler;
 use Nicholass003\LittleBrother\Protocol\Translator\Runtime\InventoryContentTranslationHandler;
@@ -81,6 +83,7 @@ final class PacketTranslator{
 		$itemMapper = $this->plugin->getItemRuntimeIdMapper();
 		$chunkTranslator = $this->plugin->getChunkTranslator();
 
+		$this->packetHandlers[AddActorPacket::ID] = new AddActorTranslationHandler($blockMapper);
 		$this->packetHandlers[AddItemActorPacket::ID] = new AddItemActorTranslationHandler($blockMapper);
 		$this->packetHandlers[AddPlayerPacket::ID] = new AddPlayerTranslationHandler($blockMapper);
 		$this->packetHandlers[InventoryContentPacket::ID] = new InventoryContentTranslationHandler($blockMapper);
