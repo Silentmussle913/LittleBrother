@@ -27,14 +27,8 @@ namespace Nicholass003\LittleBrother\Protocol\Translator\Runtime;
 use Nicholass003\Axiom\Data\Type\ItemStack;
 use Nicholass003\Axiom\Data\Type\ItemStackWrapper;
 use Nicholass003\Axiom\Packet\Packet;
-use Nicholass003\LittleBrother\Convert\Block\RuntimeBlockMapper;
-use Nicholass003\LittleBrother\Protocol\Translator\RuntimePacketHandler;
 
-abstract class ItemStackWrapperTranslationHandler implements RuntimePacketHandler{
-
-	public function __construct(
-		protected RuntimeBlockMapper $blockMapper
-	){}
+abstract class ItemStackWrapperTranslationHandler extends RuntimeIdTranslationHandler{
 
 	/**
 	 * @param Packet $packet   The decoded packet (will be modified in place)
@@ -61,7 +55,7 @@ abstract class ItemStackWrapperTranslationHandler implements RuntimePacketHandle
 		// Map blockRuntimeId (only if non‑zero)
 		$newBlockRuntimeId = $stack->blockRuntimeId;
 		if($newBlockRuntimeId !== 0){
-			$newBlockRuntimeId = $inbound ? $this->blockMapper->clientToServer($protocol, $newBlockRuntimeId) : $this->blockMapper->serverToClient($protocol, $newBlockRuntimeId);
+			$newBlockRuntimeId = $this->translateBlockId($newBlockRuntimeId, $protocol, $inbound);
 		}
 
 		$newStack = new ItemStack(
