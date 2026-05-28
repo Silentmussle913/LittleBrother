@@ -42,7 +42,7 @@ use function dirname;
 class LittleBrother extends PluginBase{
 	use SingletonTrait;
 
-	public const IS_DEVELOPMENT = true;
+	public const IS_DEVELOPMENT = false;
 
 	private ProtocolStorage $protocolStorage;
 	private PacketTranslator $translator;
