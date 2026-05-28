@@ -10,6 +10,7 @@ Each release includes a detailed list of changes introduced in that version.
 
 | Version                        | Status | Released      | Description                                                                                     |
 | ------------------------------ | ------ | ------------- | ----------------------------------------------------------------------------------------------- |
+| [v2.1.0-ALPHA](2.1.0-ALPHA.md) | Alpha  | 29 May 2026   | Initial support for Bedrock protocol v1001, CreativeContentTranslationHandler, and IsEditorMode |
 | [v2.0.1-ALPHA](2.0.1-ALPHA.md) | Alpha  | 25 May 2026   | Protocol translation stabilization, runtime ID fixes, and serializer compatibility improvements |
 | [v2.0.0-ALPHA](2.0.0-ALPHA.md) | Alpha  | 25 May 2026   | Major migration to the Axiom runtime translation architecture and protocol support up to v975   |
 | [v1.2.0-ALPHA](1.2.0-ALPHA.md) | Alpha  | 26 March 2026 | Major schema compiler overhaul and v844 support                                                 |

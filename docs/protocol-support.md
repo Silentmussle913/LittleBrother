@@ -23,6 +23,7 @@ The native protocol corresponds to the version used by the running PocketMine-MP
 
 | Protocol | Minecraft Version | Status                   |
 | -------- | ----------------- | ------------------------ |
+| 1001     | 1.26.30           | Supported                |
 | 944      | 1.26.10           | Supported                |
 | 924      | 1.26.0            | Supported                |
 | 898      | 1.21.130          | Supported                |
